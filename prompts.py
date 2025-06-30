@@ -29,3 +29,37 @@ Analyze the provided global topic hierarchy and identify topics that are most re
 - Do not return gibberish topics, return topics only when they can be studied further.
 - Do not return topic IDs or Topic numbers.
 """
+
+
+initial_rag_prompt = """Please create a detailed report of the following topic: {tentative_aspect_topic}
+        Please feel free to rename the topic to make it more specific and relevant to findings in the data.
+        """
+
+rag_system_prompt = """You are a helpful summarising assistant that can help with summarising the following text.
+Here is the explanation of the fields to fill :
+# title: string - A detailed title of the topic;
+# description: string - A short description of the topic;
+# summary: string - Multi section markdown report of the topic;
+# references: ARRAY{{
+#     segment_id: int - The id of the segment, always a number;
+#     description: string - A short description of the segment and its relevance to the topic;
+#     verbatim_transcript: string - The verbatim transcript of the segment;
+# }}"""
+
+view_summary_system_prompt = """You are a helpful summarising assistant that can help with summarising the following text.
+Please return a professional report on the topic.
+Here is the explanation of the fields to fill :
+# title: string - A detailed title of the topic;
+# description: string - A short description of the topic;
+# summary: string - Multi section markdown report of the topic;
+# references: ARRAY{{
+#     title: string - A detailed title of the segment;
+#     description: string - A short description of the segment and its relevance to the topic;
+#     summary: In detail summary of all the fields ;
+# }}"""
+
+view_summary_prompt = """You are a helpful summarising assistant that can help with summarising the following text.
+Please return a professional report on the topic."""
+
+
+# Please return a professional report on the topic. 

@@ -19,6 +19,15 @@ import json
 import re
 import requests
 from requests.exceptions import RequestException
+import random
+from prompts import (
+    topic_model_prompt,
+    topic_model_system_prompt,
+    initial_rag_prompt,
+    rag_system_prompt,
+    view_summary_system_prompt,
+    view_summary_prompt,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +35,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-class Segment(BaseModel):
-    id: str
-    segment_id: str
+class References(BaseModel):
+    segment_id: int
     description: str
     verbatim_transcript: str
 
@@ -37,7 +45,13 @@ class Aspect(BaseModel):
     title: str
     description: str
     summary: str
-    segments: List[Segment]
+    segments: List[References]
+
+
+class ViewSummaryResponse(BaseModel):
+    title: str
+    description: str
+    summary: str
 
 
 class TopicModelResponse(BaseModel):
@@ -114,15 +128,17 @@ def initialize_topic_model():
         raise e
 
 
-def run_topic_model(topic_model, docs, topics: Optional[List[str]] = None):
+def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] = None):
     """Run the topic model on the documents"""
     topics, probs = topic_model.fit_transform(docs)
-    return topics, probs
+    hierarchical_topics = topic_model.hierarchical_topics(docs)
+    return topics, probs, hierarchical_topics
 
 
-def run_formated_llm_call(messages: List[Dict[str, str]], response_format: BaseModel):
+def run_formated_llm_call(
+    messages: List[Dict[str, str]], response_format: BaseModel
+):
     """Run the LLM call on the prompt"""
-    # TODO: Implement LiteLLM call
     response = completion(
         messages=messages,
         model=str(os.getenv("AZURE_MODEL")),
@@ -138,91 +154,124 @@ def get_rag_prompt(
     query: str,
     segment_ids: Optional[List[str]] = None,
     rag_server_url: Optional[str] = None,
+    auth_token: Optional[str] = None,
 ) -> str:
     """
     Get RAG prompt by calling the external RAG server API
 
     Args:
-        aspects: List of topic aspects to use as the query
+        query: The query string to send to the RAG server
         segment_ids: List of segment IDs to include in the RAG query
         rag_server_url: Base URL of the RAG server (defaults to env variable RAG_SERVER_URL)
+        auth_token: Bearer token for authentication (defaults to env variable RAG_SERVER_AUTH_TOKEN)
 
     Returns:
         RAG prompt string from the server
     """
-    try:
-        # Get server URL from environment or parameter
-        if rag_server_url is None:
-            rag_server_url = os.getenv("RAG_SERVER_URL")
-            if not rag_server_url:
-                raise ValueError(
-                    "RAG_SERVER_URL environment variable not set and no rag_server_url provided"
-                )
+    # Get server URL from environment or parameter
+    if rag_server_url is None:
+        rag_server_url = os.getenv("RAG_SERVER_URL")
+        if not rag_server_url:
+            raise ValueError(
+                "RAG_SERVER_URL environment variable not set and no rag_server_url provided"
+            )
 
-        # Construct the full API endpoint URL
-        endpoint = f"{rag_server_url.rstrip('/')}/rag/get_lightrag_prompt"
+    # API endpoint URL
+    url = f"{rag_server_url.rstrip('/')}/stateless/rag/get_lightrag_prompt"
 
-        # Create query from aspects
-        query = (
-            "Based on the following topic aspects, provide relevant information: "
-            + ", ".join(aspects)
-        )
+    # Request payload based on GetLightragQueryRequest model
+    payload = {
+        "query": query,
+        "conversation_history": None,
+        "echo_segment_ids": segment_ids,
+        "echo_conversation_ids": None,
+        "echo_project_ids": None,
+        "auto_select_bool": False,
+        "get_transcripts": False,
+        "top_k": 60
+    }
 
-        # Prepare the request payload
-        payload = GetLightragQueryRequest(
-            query=query,
-            echo_segment_ids=segment_ids,
-            auto_select_bool=segment_ids
-            is None,  # Auto-select if no specific segments provided
-            top_k=60,
-        )
+    # Headers
+    headers = {
+        "Content-Type": "application/json"
+    }
 
-        # Make the API request
-        headers = {"Content-Type": "application/json"}
-
-        # Add authentication headers if needed
+    # Add Bearer authentication header
+    if auth_token is None:
         auth_token = os.getenv("RAG_SERVER_AUTH_TOKEN")
-        if auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
 
-        logger.info(f"Making RAG API request to {endpoint}")
-        response = requests.post(
-            endpoint,
-            json=payload,
-            headers=headers,
-            timeout=30,  # 30 second timeout
-        )
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
 
-        # Check if request was successful
-        response.raise_for_status()
-
-        # Return the RAG prompt
-        rag_prompt = response.text
+    try:
+        logger.info(f"Making RAG API request to {url}")
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()  # Raises an HTTPError for bad responses
+        
+        # The endpoint returns a string directly
+        result = response.text
         logger.info("Successfully retrieved RAG prompt")
-        return rag_prompt
-
-    except RequestException as e:
-        logger.error(f"HTTP request failed: {str(e)}")
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling API: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}")
+            logger.error(f"Response text: {e.response.text}")
         raise Exception(f"Failed to get RAG prompt from server: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error getting RAG prompt: {str(e)}")
-        raise e
+
+
+def get_aspect_response_list(
+    aspects: List[str], segment_ids: List[str], auth_token: Optional[str] = None
+):
+    """Get the response list for the aspects"""
+    aspect_response_list = []
+    for tentative_aspect_topic in aspects:
+        formated_initial_rag_prompt = initial_rag_prompt.format(
+            tentative_aspect_topic=tentative_aspect_topic
+        )
+        rag_prompt = get_rag_prompt(
+            formated_initial_rag_prompt, segment_ids=segment_ids, auth_token=auth_token
+        )
+        rag_messages = [
+            {"role": "system", "content": rag_system_prompt},
+            {"role": "user", "content": rag_prompt},
+        ]
+        rag_response = run_formated_llm_call(rag_messages, Aspect)
+        aspect_response_list.append(rag_response)
+    return aspect_response_list
+
+
+def summarise_aspects(aspect_response_list: List[Aspect]):
+    """Summarise the aspects"""
+    aspect_texts = [
+        f"{aspect.title}\n{aspect.description}\n{aspect.summary}"
+        for aspect in aspect_response_list
+    ]
+    view_text = "\n\n".join(aspect_texts)
+    messages = [
+        {"role": "system", "content": view_summary_system_prompt},
+        {
+            "role": "user",
+            "content": view_summary_prompt.format(
+                view_text=view_text,
+            ),
+        },
+    ]
+    response = run_formated_llm_call(messages, ViewSummaryResponse)
+    return response
 
 
 if __name__ == "__main__":
-    import random
-    from prompts import topic_model_prompt, topic_model_system_prompt
-
     topic_model = initialize_topic_model()
     segment_ids = ["123", "456", "789"]
     docs = fetch_20newsgroups(subset="all", remove=("headers", "footers", "quotes"))[
         "data"
     ]
     # sample 2000 docs
-    random.seed(21)
-    # docs = random.sample(docs, 2000)
-    topics, probs = run_topic_model(topic_model, docs)
-    hierarchical_topics = topic_model.hierarchical_topics(docs)
+    random.seed(24)
+    docs = random.sample(docs, 500)
+    topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
     print(hierarchical_topics)
     messages = [
         {"role": "system", "content": topic_model_system_prompt},
@@ -236,39 +285,23 @@ if __name__ == "__main__":
     ]
     response = run_formated_llm_call(messages, TopicModelResponse)
     aspects = response["topics"]
-    aspect_response_list = []
-    for tentative_aspect_topic in aspects:
-        prompt = f'''
-        Please create a detailed description of the following topic: {tentative_aspect_topic}
-        '''
+    aspect_response_list = get_aspect_response_list(
+        aspects, segment_ids, auth_token=os.getenv("RAG_SERVER_AUTH_TOKEN")
+    )
+    summarised_aspects_dict = summarise_aspects(aspect_response_list)
+    summarised_aspects_dict["aspects"] = aspect_response_list
 
-        # Please return a professional report on the topic. Here is the explanation of the fields to fill :
-        # title: string - A detailed title of the topic;
-        # description: string - A short description of the topic;
-        # summary: string - Multi section markdown report of the topic;
-        # segments: ARRAY{{
-        #     id: int - The id of the segment, always a number;
-        #     description: string - A short description of the segment and its relevance to the topic;
-        #     verbatim_transcript: string - The verbatim transcript of the segment;
-        # }}
-        # '''
-        rag_prompt = get_rag_prompt(prompt, segment_ids=segment_ids)
-        rag_messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful summarising assistant that can help with summarising the following text.",
-            },
-            {"role": "user", "content": rag_prompt},
-        ]
-        rag_response = run_formated_llm_call(rag_messages, Aspect)
-        aspect_response_list.append(rag_response)
-        print("RAG Prompt:")
-        print(rag_prompt)
 
-    # Get RAG prompt using the extracted aspects
-    try:
-        print("RAG Prompt:")
-        print(rag_prompt)
-    except Exception as e:
-        logger.error(f"Failed to get RAG prompt: {e}")
-        print(f"Error getting RAG prompt: {e}")
+    # aspect_response_list = []
+    # for tentative_aspect_topic in aspects:
+    #     initial_rag_prompt = initial_rag_prompt.format(tentative_aspect_topic=tentative_aspect_topic)
+    #     rag_prompt = get_rag_prompt(initial_rag_prompt, segment_ids=segment_ids)
+    #     rag_messages = [
+    #         {
+    #             "role": "system",
+    #             "content": "You are a helpful summarising assistant that can help with summarising the following text.",
+    #         },
+    #         {"role": "user", "content": rag_prompt},
+    #     ]
+    #     rag_response = run_formated_llm_call(rag_messages, Aspect)
+    #     aspect_response_list.append(rag_response)
