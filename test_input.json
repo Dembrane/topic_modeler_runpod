@@ -1,0 +1,16 @@
+{
+    "input": {
+        "documents": [
+            "Machine learning is a subset of artificial intelligence that focuses on training models to learn from data. It uses statistical techniques to enable computers to improve with experience.",
+            "Deep learning is a type of machine learning based on artificial neural networks. It can automatically learn representations from data such as images, text, or sound.",
+            "Natural language processing (NLP) is a branch of AI that helps computers understand, interpret, and manipulate human language. It combines computational linguistics and machine learning.",
+            "Computer vision is an interdisciplinary field that deals with how computers can gain high-level understanding from digital images or videos. It involves deep learning for image recognition.",
+            "Reinforcement learning is an area of machine learning where agents learn to make decisions by interacting with an environment. It's based on reward and punishment mechanisms.",
+            "Data mining is the process of discovering patterns in large datasets. It combines machine learning, statistics, and database systems to extract information.",
+            "Neural networks are computing systems inspired by biological neural networks in animal brains. They form the basis of many modern AI applications.",
+            "Big data analytics involves analyzing large datasets to uncover hidden patterns and correlations. It often uses machine learning techniques for prediction.",
+            "Artificial Intelligence ethics concerns the moral principles guiding AI development. It addresses issues like bias, privacy, and transparency in AI systems.",
+            "Robotics combines AI, machine learning, and mechanical engineering to create autonomous systems. Modern robots use computer vision and reinforcement learning."
+        ]
+    }
+}
