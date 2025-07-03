@@ -111,11 +111,14 @@ The system returns structured analysis with:
   "title": "AI Development Trends Analysis",
   "description": "Comprehensive analysis of AI development topics...",
   "summary": "## Key Findings\n\n### Topic 1: Machine Learning\n...",
+  "seed": "Intial prompt",
+
   "aspects": [
     {
       "title": "Machine Learning Advances",
       "description": "Recent developments in ML algorithms",
       "summary": "Detailed analysis...",
+      "image_url":"",
       "segments": [
         {
           "segment_id": 360,

@@ -19,6 +19,8 @@ from prompts import (
     view_summary_system_prompt,
     vanilla_topic_model_user_prompt,
     vanilla_topic_model_system_prompt,
+    fallback_get_aspect_response_list_system_prompt,
+    fallback_get_aspect_response_list_user_prompt
 )
 from bertopic import BERTopic
 from pydantic import BaseModel
@@ -244,6 +246,7 @@ def get_aspect_response_list(
     """
     aspect_response_list = []
     for tentative_aspect_topic in aspects:
+        # TODO:Move this to the get_aspect_response function
         formated_initial_rag_prompt = initial_rag_prompt.format(
             tentative_aspect_topic=tentative_aspect_topic
         )
@@ -256,10 +259,10 @@ def get_aspect_response_list(
             {"role": "system", "content": rag_system_prompt},
             {"role": "user", "content": rag_user_prompt.format(response_language=response_language, input_report=rag_prompt)},
         ]
-        rag_response = run_formated_llm_call(rag_messages, Aspect)
-        rag_response["image_url"] = ""
+        formatted_response = run_formated_llm_call(rag_messages, Aspect)
+        formatted_response["image_url"] = ""
         updated_segments = []
-        for segment in rag_response["segments"]:
+        for segment in formatted_response["segments"]:
             id = segment["segment_id"]
             if id in segment_2_transcript.keys():
                 segment.pop("segment_id")
@@ -267,10 +270,42 @@ def get_aspect_response_list(
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
                 updated_segments.append(segment)
-        rag_response["segments"] = updated_segments
-        aspect_response_list.append(rag_response)
+        formatted_response["segments"] = updated_segments
+        aspect_response_list.append(formatted_response)
     return aspect_response_list
 
+
+def fallback_get_aspect_response_list(
+    aspects: List[str],
+    document_summaries: str,
+    user_prompt: str,
+    segment_2_transcript: Dict[int, str],
+    response_language: str = "en",
+):
+    aspect_response_list = []
+    for tentative_aspect_topic in aspects:
+        messages = [
+            {"role": "system", "content": fallback_get_aspect_response_list_system_prompt},
+            {"role": "user", "content": fallback_get_aspect_response_list_user_prompt.format(
+                document_summaries=document_summaries,
+                user_prompt=user_prompt, 
+                response_language=response_language,
+                aspect=tentative_aspect_topic)},
+        ]
+        formatted_response = run_formated_llm_call(messages, Aspect)
+        formatted_response["image_url"] = ""
+        updated_segments = []
+        for segment in formatted_response["segments"]:
+            id = segment["segment_id"]
+            if id in segment_2_transcript.keys():
+                segment.pop("segment_id")
+                segment["id"] = id
+                segment["conversation_id"] = ""
+                segment["verbatim_transcript"] = segment_2_transcript[id]
+                updated_segments.append(segment)
+        formatted_response["segments"] = updated_segments
+        aspect_response_list.append(formatted_response)
+    return aspect_response_list
 
 def summarise_aspects(aspect_response_list: List[Dict], response_language: str = "en"):
     """
@@ -350,17 +385,24 @@ def get_views_aspects(
     # Type-safe dictionary comprehension with explicit type checking
     segment_2_transcript: Dict[int, str] = {}
     raw_docs: List[str] = []
-    
+    doc_ids: List[str] = []
     for segment in segments:
         if isinstance(segment, dict):
             if 'id' in segment and 'transcript' in segment:
                 segment_2_transcript[int(segment['id'])] = str(segment['transcript'])
+                doc_ids.append(str(segment['id']))
+            else:
+                raise ValueError(f"Segment {segment} does not have an id or transcript")
+
             if 'contextual_transcript' in segment:
                 raw_docs.append(str(segment['contextual_transcript']))
+            else:
+                raise ValueError(f"Segment {segment} does not have a contextual transcript")
 
     # Process docs with explicit type handling
     split_docs: List[List[str]] = [doc.split("\n") for doc in raw_docs if doc != ""]
     docs: List[str] = []
+    
     for sublist in split_docs:
         docs.extend(sublist)
 
@@ -370,7 +412,7 @@ def get_views_aspects(
         token_length += token_counter(model=str(os.getenv("AZURE_MODEL")), text=doc)
 
     if token_length < threshold_context_length:
-        docs_with_ids = "\n\n".join([f"{doc_id}: {doc}" for doc_id, doc in enumerate(docs)])
+        docs_with_ids = "\n\n".join([f"SEGMENT_ID_{doc_id}: {doc}" for doc_id, doc in zip(doc_ids, raw_docs)])
         messages = [
             {"role": "system", "content": vanilla_topic_model_system_prompt},
             {
@@ -422,11 +464,14 @@ def get_views_aspects_fallback(segment_ids, user_prompt, response_language, thre
         {
             "query": {
                 "filter": {"id": {"_in": segment_ids}},
-                "fields": ["id","conversation_id.summary"],
+                "fields": ["id","transcript","conversation_id.summary"],
             },
         },
     )
-    summaries_list = list(set([summary['conversation_id']['summary'] for summary in summaries]))
+    segment_2_transcript: Dict[int, str] = {}
+    for summary in summaries:
+        segment_2_transcript[int(summary['id'])] = str(summary['transcript'])
+    summaries_list = list(set([(summary['id'],summary['conversation_id']['summary']) for summary in summaries]))
     random.shuffle(summaries_list)
     samples_to_summarise = []
     token_count = 0
@@ -437,5 +482,31 @@ def get_views_aspects_fallback(segment_ids, user_prompt, response_language, thre
         token_count += token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary)
 
     # Do the vanilla path
-
+    docs_with_ids = "\n\n".join([f"SEGMENT_ID_{summary[0]}: {summary[1]}" for summary in samples_to_summarise])
+    messages = [
+        {"role": "system", "content": vanilla_topic_model_system_prompt},
+        {
+            "role": "user",
+            "content": vanilla_topic_model_user_prompt.format(
+                docs_with_ids=docs_with_ids,
+                user_prompt=user_prompt,
+                response_language=response_language,
+            ),
+        },
+    ]
+    tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
+    tentative_aspects = tentative_aspects_response["topics"]
+    aspect_response_list = fallback_get_aspect_response_list(
+        tentative_aspects,
+        docs_with_ids,
+        user_prompt,
+        segment_2_transcript,
+        response_language=response_language,
+    )
+    views_dict = summarise_aspects(aspect_response_list, response_language=response_language)
+    views_dict["aspects"] = aspect_response_list
+    views_dict["seed"] = user_prompt
+    views_dict["language"] = response_language
+    response = {"view":views_dict}
+    return response
 
