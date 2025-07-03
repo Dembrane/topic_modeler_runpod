@@ -1,4 +1,4 @@
-runpod>=1.6.2
-bertopic>=0.16.0
+bertopic==0.16.*
 litellm==1.73.*
-directus-sdk-py>=1.1.0
+directus-sdk-py==1.1.*
+runpod==1.7.*

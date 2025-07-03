@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  # on push, we will run ci then also push built images
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-build-and-push:
+    name: ci-build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # This enables the creation of a builder instance with persistent cache
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+      
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+      
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/topic_modeler:${{ github.sha }}
+            ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/topic_modeler:latest
+          # Enhanced cache settings
+          cache-from: |
+            type=gha,scope=topic_modeler
+            type=registry,ref=${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/topic_modeler:latest
+          cache-to: |
+            type=gha,scope=topic_modeler,mode=max
+            type=registry,ref=${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/topic_modeler:latest,mode=max 

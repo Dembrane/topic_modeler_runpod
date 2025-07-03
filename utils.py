@@ -211,7 +211,7 @@ def get_rag_prompt(
 def get_aspect_response_list(
     aspects: List[str],
     segment_ids: List[str],
-    segment_2_transcript: Dict[str, str],
+    segment_2_transcript: Dict[int, str],
     auth_token: Optional[str] = None,
     response_language: str = "en",
 ):
