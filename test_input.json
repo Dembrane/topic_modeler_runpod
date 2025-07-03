@@ -1,0 +1,8 @@
+{
+    "input": {
+      "response_language": "en",
+      "segment_ids": [360, 361, 362],
+      "user_prompt": "Please summarise all the topics."
+    }
+  }
+  
