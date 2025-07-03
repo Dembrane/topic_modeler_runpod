@@ -98,7 +98,7 @@ def initialize_topic_model():
         raise e
 
 
-def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] = None):
+def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] = None, nr_topics: Optional[int] = None):
     """
     Run hierarchical topic modeling on the provided documents.
 
@@ -106,6 +106,7 @@ def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] 
         topic_model: Initialized BERTopic model
         docs: List of documents to process
         topics: Optional list of predefined topics
+        nr_topics: Optional number of topics to reduce to after fitting
 
     Returns:
         tuple: Contains:
@@ -113,7 +114,15 @@ def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] 
             - probs: Topic probabilities for each document
             - hierarchical_topics: Hierarchical structure of topics
     """
+    # First fit the model normally
     topics, probs = topic_model.fit_transform(docs)
+    
+    # If nr_topics is specified, reduce the topics
+    if nr_topics is not None:
+        topic_model.reduce_topics(docs, nr_topics=nr_topics)
+        topics = topic_model.topics_
+        probs = topic_model.probabilities_
+    
     hierarchical_topics = topic_model.hierarchical_topics(docs)
     return topics, probs, hierarchical_topics
 
@@ -376,14 +385,15 @@ def get_views_aspects(
         tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
     else:
         topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
-        print(hierarchical_topics)
+        if token_counter(model=str(os.getenv("AZURE_MODEL")), text=topic_model.get_topic_tree(hierarchical_topics)) > threshold_context_length*.8:
+            topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs, nr_topics=50)
         messages = [
             {"role": "system", "content": topic_model_system_prompt},
             {
                 "role": "user",
                 "content": topic_model_prompt.format(
                     global_topic_hierarchy=topic_model.get_topic_tree(hierarchical_topics),
-                    user_prompt="Please summarise all the topics.",
+                    user_prompt=user_prompt,
                     response_language=response_language,
                 ),
             },
@@ -404,3 +414,28 @@ def get_views_aspects(
     views_dict["language"] = response_language
     response = {"view":views_dict}
     return response
+
+def get_views_aspects_fallback(segment_ids, user_prompt, response_language, threshold_context_length):
+    import random
+    summaries =directus.get_items(
+        "conversation_segment",
+        {
+            "query": {
+                "filter": {"id": {"_in": segment_ids}},
+                "fields": ["id","conversation_id.summary"],
+            },
+        },
+    )
+    summaries_list = list(set([summary['conversation_id']['summary'] for summary in summaries]))
+    random.shuffle(summaries_list)
+    samples_to_summarise = []
+    token_count = 0
+    for summary in summaries_list:
+        if token_count + token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary) > threshold_context_length*0.8:
+            break
+        samples_to_summarise.append(summary)
+        token_count += token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary)
+
+    # Do the vanilla path
+
+
