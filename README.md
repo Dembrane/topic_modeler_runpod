@@ -1,6 +1,6 @@
 # Topic Modeler with RAG Integration
 
-A sophisticated topic modeling and content analysis system that combines BERTopic with Retrieval-Augmented Generation (RAG) to generate professional journalistic reports from data segments.
+A topic modeling and content analysis system that combines BERTopic with Retrieval-Augmented Generation (RAG) to generate in depth reports from data segments of Dembrane ECHO.
 
 ## 🚀 Features
 
