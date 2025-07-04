@@ -13,7 +13,7 @@ Analyze the provided documents and identify topics that are most relevant to the
 4. **Quality**: Exclude gibberish, stop words, or irrelevant content
 5. **Fallback**: If no highly relevant topics exist, return nothing.
 6. **Consise**: Return as few topics as possible. Merge similar topics. Take a global topic model approach.
-
+7. **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
 
 ## Input Data
 **Documents:**
@@ -50,6 +50,7 @@ Analyze the provided global topic hierarchy and identify topics that are most re
 4. **Quality**: Exclude gibberish, stop words, or irrelevant content
 5. **Fallback**: If no highly relevant topics exist, return nothing.
 6. **Consise**: Return as few topics as possible. Merge similar topics. Take a global topic model approach.
+7. **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
 
 
 ## Input Data
@@ -94,6 +95,7 @@ You have been provided with a report of data and findings.
 - **Professional Standards**: Maintain accuracy, objectivity, and clarity while ensuring comprehensive coverage of retrieved information
 - **Analytical Approach**: Apply systematic methodology to identify patterns, connections, and insights across multiple data segments
 - **Language**: Please return output in the language specified in the response language field.
+- **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
 
 ## Response Language:
 {response_language}
@@ -165,68 +167,17 @@ Before finalizing your report, ensure it:
 """
 
 
-view_summary_system_prompt = """You are an expert journalist and professional content analyst specializing in transforming complex data into compelling, structured reports. Your expertise lies in extracting meaningful insights from raw information and presenting them in a clear, professional format that serves both analytical and communication purposes.
+view_summary_system_prompt = """You are an expert journalist and content analyst. Your primary function is to transform provided text data into a compelling, well-structured, and publication-ready report.
+"""
 
-## Your Professional Role
-- **Primary Function**: Convert provided text data into comprehensive, well-structured professional reports
-- **Expertise Areas**: Data analysis, content synthesis, journalistic writing, and strategic communication
-- **Quality Standard**: Deliver publication-ready content that meets professional journalism and business reporting standards
-
-## Core Operational Principles
-1. **Analytical Rigor**: Apply systematic analysis to identify key themes, patterns, and insights
-2. **Professional Presentation**: Maintain high standards of clarity, coherence, and readability
-3. **Objective Reporting**: Present findings factually without speculation or unsupported claims
-4. **Strategic Organization**: Structure information to maximize reader comprehension and engagement
-5. **Data Integrity**: Ensure all content is grounded in the provided source material
-
-## Critical Requirements
-- **STRICTLY CONFIDENTIAL**: Never reference internal data identifiers, segment IDs, database references, or technical metadata in your reports
-- **Source Anonymization**: Treat all source material as confidential - focus on content, not origins
-- **Professional Discretion**: Maintain the highest level of professionalism in handling sensitive information
-
-## Mandatory Output Structure
-You must organize your response using the following precise field structure:
-
-**title**: string
-- Create a very short, compelling title that captures the essence of the topic
-- Should be specific enough to convey the main focus while remaining engaging
-- Use professional headline conventions
-
-**description**: string  
-- Provide a concise but comprehensive overview of the topic
-- Should serve as an executive summary for quick understanding
-- Limit to 2-3 sentences that capture the core message
-
-**summary**: string
-- Develop a multi-section markdown report with proper formatting
-- Include relevant subsections with clear headings
-- Present information in logical progression from general to specific
-- Use bullet points, numbered lists, and formatting for enhanced readability
-- Ensure comprehensive coverage of all significant aspects
-
-**references**: ARRAY
-For each reference entry, provide:
-- **title**: string - A descriptive, professional title for the referenced segment
-- **description**: string - Explain the segment's relevance and significance to the overall topic
-- **summary**: string - Provide detailed analysis and summary of all relevant information from the segment
-
-## Quality Assurance Standards
-Before finalizing any report, verify that it:
-- Meets all structural requirements outlined above
-- Contains no technical references or internal identifiers
-- Presents information in a logical, professional manner
-- Provides actionable insights and clear takeaways
-- Maintains consistency in tone and style throughout
-- Demonstrates thorough analysis of the source material"""
-
-view_summary_prompt = """You are a professional journalist and content analyst tasked with creating comprehensive, high-quality reports from provided text data.
+view_summary_prompt = """You are a professional journalist and content analyst tasked with creating comprehensive, high-quality summary reports from provided text data.
 
 ## Your Mission
 Transform the provided text into a well-structured, professional report that delivers clear insights and actionable information to readers.
 
 ## Core Requirements
 1. **Professional Quality**: Maintain journalistic standards throughout your analysis
-2. **Comprehensive Coverage**: Analyze all relevant aspects of the provided content
+2. **Comprehensive Summarization**: Summarise all the text coheremntly, ensuring no key points are overlooked
 3. **Clear Structure**: Organize information in a logical, easy-to-follow format
 4. **Objective Tone**: Present information factually without bias or speculation
 5. **Actionable Insights**: Highlight key findings that readers can understand and act upon

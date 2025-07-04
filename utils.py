@@ -19,8 +19,8 @@ from prompts import (
     view_summary_system_prompt,
     vanilla_topic_model_user_prompt,
     vanilla_topic_model_system_prompt,
+    fallback_get_aspect_response_list_user_prompt,
     fallback_get_aspect_response_list_system_prompt,
-    fallback_get_aspect_response_list_user_prompt
 )
 from bertopic import BERTopic
 from pydantic import BaseModel
@@ -307,6 +307,7 @@ def fallback_get_aspect_response_list(
         aspect_response_list.append(formatted_response)
     return aspect_response_list
 
+
 def summarise_aspects(aspect_response_list: List[Dict], response_language: str = "en"):
     """
     Generate a summary of multiple aspects.
@@ -412,7 +413,7 @@ def get_views_aspects(
         token_length += token_counter(model=str(os.getenv("AZURE_MODEL")), text=doc)
 
     if token_length < threshold_context_length:
-        docs_with_ids = "\n\n".join([f"SEGMENT_ID_{doc_id}: {doc}" for doc_id, doc in zip(doc_ids, raw_docs)])
+        docs_with_ids = "---------\n\n".join([f"SEGMENT_ID_{doc_id}: {doc}" for doc_id, doc in zip(doc_ids, raw_docs)])
         messages = [
             {"role": "system", "content": vanilla_topic_model_system_prompt},
             {
@@ -457,6 +458,7 @@ def get_views_aspects(
     response = {"view":views_dict}
     return response
 
+
 def get_views_aspects_fallback(segment_ids, user_prompt, response_language, threshold_context_length):
     import random
     summaries =directus.get_items(
@@ -476,13 +478,13 @@ def get_views_aspects_fallback(segment_ids, user_prompt, response_language, thre
     samples_to_summarise = []
     token_count = 0
     for summary in summaries_list:
-        if token_count + token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary) > threshold_context_length*0.8:
+        if token_count + token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary[1]) > threshold_context_length*0.8:
             break
         samples_to_summarise.append(summary)
-        token_count += token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary)
+        token_count += token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary[1])
 
     # Do the vanilla path
-    docs_with_ids = "\n\n".join([f"SEGMENT_ID_{summary[0]}: {summary[1]}" for summary in samples_to_summarise])
+    docs_with_ids = "---------\n\n".join([f"SEGMENT_ID_{summary[0]}: {summary[1]}" for summary in samples_to_summarise])
     messages = [
         {"role": "system", "content": vanilla_topic_model_system_prompt},
         {
