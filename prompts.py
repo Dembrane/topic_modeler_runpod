@@ -7,11 +7,11 @@ vanilla_topic_model_user_prompt = """
 Analyze the provided documents and identify topics that are most relevant to the user's query.
 
 ## Instructions
-1. **Relevance**: Select only topics that directly relate to the user prompt
+1. **Relevance**: Create topics that directly relate to the user prompt
 2. **Detail**: Provide coherent, detailed topic descriptions
 3. **Language**: Please return output in the language specified in the response language field.
 4. **Quality**: Exclude gibberish, stop words, or irrelevant content
-5. **Fallback**: If no highly relevant topics exist, return nothing.
+5. **Uniqueness**: Please keep each topic unique. Please do not return similar topics or a summary of all documents as a topic.
 6. **Consise**: Return as few topics as possible. Merge similar topics. Take a global topic model approach.
 7. **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
 

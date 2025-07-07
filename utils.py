@@ -1,7 +1,9 @@
 import os
 import json
+import uuid
 import logging
 from typing import Dict, List, Optional
+from datetime import datetime, timezone
 
 import torch
 import requests
@@ -32,7 +34,9 @@ from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+log_level = os.getenv("DEBUG", "False")
+level = logging.DEBUG if log_level.lower() == "true" else logging.INFO
+logging.basicConfig(level=level)
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -41,6 +45,10 @@ DIRECTUS_TOKEN = str(os.getenv("DIRECTUS_TOKEN"))
 
 
 directus = DirectusClient(url=DIRECTUS_BASE_URL, token=DIRECTUS_TOKEN)
+
+
+def generate_uuid() -> str:
+    return str(uuid.uuid4())
 
 
 def initialize_topic_model():
@@ -100,7 +108,9 @@ def initialize_topic_model():
         raise e
 
 
-def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] = None, nr_topics: Optional[int] = None):
+def run_topic_model_hierarchical(
+    topic_model, docs, topics: Optional[List[str]] = None, nr_topics: Optional[int] = None
+):
     """
     Run hierarchical topic modeling on the provided documents.
 
@@ -118,13 +128,13 @@ def run_topic_model_hierarchical(topic_model, docs, topics: Optional[List[str]] 
     """
     # First fit the model normally
     topics, probs = topic_model.fit_transform(docs)
-    
+
     # If nr_topics is specified, reduce the topics
     if nr_topics is not None:
         topic_model.reduce_topics(docs, nr_topics=nr_topics)
         topics = topic_model.topics_
         probs = topic_model.probabilities_
-    
+
     hierarchical_topics = topic_model.hierarchical_topics(docs)
     return topics, probs, hierarchical_topics
 
@@ -159,7 +169,9 @@ def get_rag_prompt(
     query: str,
     segment_ids: Optional[List[str]] = None,
     rag_server_url: Optional[str] = None,
-    auth_token: Optional[str] = None, # TODO: @sameer, please look into how to make this call with token
+    auth_token: Optional[
+        str
+    ] = None,  # TODO: @sameer, please look into how to make this call with token
 ) -> str:
     """
     Retrieve RAG prompt by calling the external RAG server API.
@@ -199,7 +211,9 @@ def get_rag_prompt(
 
     headers = {"Content-Type": "application/json"}
     cookies = {
-        "directus_session_token": os.getenv("RAG_SERVER_AUTH_TOKEN")# TODO: @sameer, please look into how to make this call with token
+        "directus_session_token": os.getenv(
+            "RAG_SERVER_AUTH_TOKEN"
+        )  # TODO: @sameer, please look into how to make this call with token
     }
 
     try:
@@ -257,7 +271,12 @@ def get_aspect_response_list(
         )
         rag_messages = [
             {"role": "system", "content": rag_system_prompt},
-            {"role": "user", "content": rag_user_prompt.format(response_language=response_language, input_report=rag_prompt)},
+            {
+                "role": "user",
+                "content": rag_user_prompt.format(
+                    response_language=response_language, input_report=rag_prompt
+                ),
+            },
         ]
         formatted_response = run_formated_llm_call(rag_messages, Aspect)
         formatted_response["image_url"] = ""
@@ -269,6 +288,7 @@ def get_aspect_response_list(
                 segment["id"] = id
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
+                segment['relevant_segments'] = f'0:{len(segment["verbatim_transcript"])-1}' #TODO: Change this to a small LLM call 
                 updated_segments.append(segment)
         formatted_response["segments"] = updated_segments
         aspect_response_list.append(formatted_response)
@@ -286,11 +306,15 @@ def fallback_get_aspect_response_list(
     for tentative_aspect_topic in aspects:
         messages = [
             {"role": "system", "content": fallback_get_aspect_response_list_system_prompt},
-            {"role": "user", "content": fallback_get_aspect_response_list_user_prompt.format(
-                document_summaries=document_summaries,
-                user_prompt=user_prompt, 
-                response_language=response_language,
-                aspect=tentative_aspect_topic)},
+            {
+                "role": "user",
+                "content": fallback_get_aspect_response_list_user_prompt.format(
+                    document_summaries=document_summaries,
+                    user_prompt=user_prompt,
+                    response_language=response_language,
+                    aspect=tentative_aspect_topic,
+                ),
+            },
         ]
         formatted_response = run_formated_llm_call(messages, Aspect)
         formatted_response["image_url"] = ""
@@ -302,7 +326,9 @@ def fallback_get_aspect_response_list(
                 segment["id"] = id
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
+                segment['relevant_segments'] = f'0:{len(segment["verbatim_transcript"])-1}'
                 updated_segments.append(segment)
+
         formatted_response["segments"] = updated_segments
         aspect_response_list.append(formatted_response)
     return aspect_response_list
@@ -345,7 +371,7 @@ def summarise_aspects(aspect_response_list: List[Dict], response_language: str =
 def get_views_aspects(
     segment_ids: List[str],
     user_prompt: str,
-    response_language: str|None = None,
+    response_language: str | None = None,
     threshold_context_length: int = 100000,
 ) -> Dict:
     """
@@ -382,28 +408,28 @@ def get_views_aspects(
             },
         },
     )
-
+    logger.debug(f"Retrieved segments: {segments}")
     # Type-safe dictionary comprehension with explicit type checking
     segment_2_transcript: Dict[int, str] = {}
     raw_docs: List[str] = []
     doc_ids: List[str] = []
     for segment in segments:
         if isinstance(segment, dict):
-            if 'id' in segment and 'transcript' in segment:
-                segment_2_transcript[int(segment['id'])] = str(segment['transcript'])
-                doc_ids.append(str(segment['id']))
+            if "id" in segment and "transcript" in segment:
+                segment_2_transcript[int(segment["id"])] = str(segment["transcript"])
+                doc_ids.append(str(segment["id"]))
             else:
                 raise ValueError(f"Segment {segment} does not have an id or transcript")
 
-            if 'contextual_transcript' in segment:
-                raw_docs.append(str(segment['contextual_transcript']))
+            if "contextual_transcript" in segment:
+                raw_docs.append(str(segment["contextual_transcript"]))
             else:
                 raise ValueError(f"Segment {segment} does not have a contextual transcript")
 
     # Process docs with explicit type handling
     split_docs: List[List[str]] = [doc.split("\n") for doc in raw_docs if doc != ""]
     docs: List[str] = []
-    
+
     for sublist in split_docs:
         docs.extend(sublist)
 
@@ -413,7 +439,9 @@ def get_views_aspects(
         token_length += token_counter(model=str(os.getenv("AZURE_MODEL")), text=doc)
 
     if token_length < threshold_context_length:
-        docs_with_ids = "---------\n\n".join([f"SEGMENT_ID_{doc_id}: {doc}" for doc_id, doc in zip(doc_ids, raw_docs)])
+        docs_with_ids = "---------\n\n".join(
+            [f"SEGMENT_ID_{doc_id}: {doc}" for doc_id, doc in zip(doc_ids, raw_docs)]
+        )
         messages = [
             {"role": "system", "content": vanilla_topic_model_system_prompt},
             {
@@ -428,8 +456,16 @@ def get_views_aspects(
         tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
     else:
         topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
-        if token_counter(model=str(os.getenv("AZURE_MODEL")), text=topic_model.get_topic_tree(hierarchical_topics)) > threshold_context_length*.8:
-            topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs, nr_topics=50)
+        if (
+            token_counter(
+                model=str(os.getenv("AZURE_MODEL")),
+                text=topic_model.get_topic_tree(hierarchical_topics),
+            )
+            > threshold_context_length * 0.8
+        ):
+            topics, probs, hierarchical_topics = run_topic_model_hierarchical(
+                topic_model, docs, nr_topics=50
+            )
         messages = [
             {"role": "system", "content": topic_model_system_prompt},
             {
@@ -455,36 +491,50 @@ def get_views_aspects(
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
-    response = {"view":views_dict}
+    response = {"view": views_dict}
     return response
 
 
-def get_views_aspects_fallback(segment_ids, user_prompt, response_language, threshold_context_length):
+def get_views_aspects_fallback(
+    segment_ids: List[str],
+    user_prompt: str,
+    response_language: str | None = None,
+    threshold_context_length: int = 100000,
+) -> Dict:
     import random
-    summaries =directus.get_items(
+
+    summaries = directus.get_items(
         "conversation_segment",
         {
             "query": {
                 "filter": {"id": {"_in": segment_ids}},
-                "fields": ["id","transcript","conversation_id.summary"],
+                "fields": ["id", "transcript", "conversation_id.summary"],
             },
         },
     )
+    logger.debug(f"Retrieved summaries: {summaries}")
     segment_2_transcript: Dict[int, str] = {}
     for summary in summaries:
-        segment_2_transcript[int(summary['id'])] = str(summary['transcript'])
-    summaries_list = list(set([(summary['id'],summary['conversation_id']['summary']) for summary in summaries]))
+        segment_2_transcript[int(summary["id"])] = str(summary["transcript"])
+    summaries_list = list(
+        set([(summary["id"], summary["conversation_id"]["summary"]) for summary in summaries])
+    )
     random.shuffle(summaries_list)
     samples_to_summarise = []
     token_count = 0
     for summary in summaries_list:
-        if token_count + token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary[1]) > threshold_context_length*0.8:
+        if (
+            token_count + token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary[1])
+            > threshold_context_length * 0.8
+        ):
             break
         samples_to_summarise.append(summary)
         token_count += token_counter(model=str(os.getenv("AZURE_MODEL")), text=summary[1])
 
     # Do the vanilla path
-    docs_with_ids = "---------\n\n".join([f"SEGMENT_ID_{summary[0]}: {summary[1]}" for summary in samples_to_summarise])
+    docs_with_ids = "---------\n\n".join(
+        [f"SEGMENT_ID_{summary[0]}: {summary[1]}" for summary in samples_to_summarise]
+    )
     messages = [
         {"role": "system", "content": vanilla_topic_model_system_prompt},
         {
@@ -509,6 +559,81 @@ def get_views_aspects_fallback(segment_ids, user_prompt, response_language, thre
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
-    response = {"view":views_dict}
+    response = {"view": views_dict}
     return response
 
+
+def update_directus(response):
+    # Create a view in Directus
+    # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
+    view = response["view"]
+    title = view.get("title", "")
+    description = view.get("description", "")
+    summary = view.get("summary", "")
+    seed = view.get("seed", "")
+    language = view.get("language", "en")
+    aspects = view.get("aspects", [])
+    # Directus create view
+    view_id = generate_uuid()
+    # TODO: @sameer, 1. There is no description field in the view,
+    # 2. We would need to pass the projec_analysis_run_id to the view
+    directus.create_item(
+        "view",
+        item_data={
+            "id": str(view_id),
+            "name": title,
+            "description": description,
+            "summary": summary,
+            "seed": seed,
+            "language": language,
+            "processing_status": "Generating Aspects",
+            "processing_started_at": str(datetime.now(timezone.utc)),
+        },
+    )
+
+    # For aspect : create aspect
+    # (['title', 'description', 'summary', 'segments', 'image_url'])
+    for aspect in aspects:
+        aspect_id = generate_uuid()
+        aspect_title = aspect.get("title", "")
+        aspect_description = aspect.get("description", "")
+        aspect_summary = aspect.get("summary", "")
+        segments = aspect.get("segments", [])
+        image_url = aspect.get("image_url", "")
+        directus.create_item(
+            "aspect",
+            {
+                "id": str(aspect_id),
+                "name": aspect_title,
+                "description": aspect_description,
+                "short_summary": aspect_description,
+                "long_summary": aspect_summary,
+                "image_url": image_url,
+                "view_id": str(view_id),
+            },
+        )
+
+        # Directus create aspect
+        for segment in segments:
+            # ['description', 'id', 'conversation_id', 'verbatim_transcript']
+            aspect_segment_id = generate_uuid()
+            segment_description = segment.get("description", "")
+            segment_id = segment.get("id", "")
+            conversation_id = segment.get("conversation_id", "")
+            verbatim_transcript = segment.get("verbatim_transcript", "")
+            relevant_index = segment.get("relevant_segments", "")
+            directus.create_item(
+                "aspect_segment",
+                {
+                    "id": str(aspect_segment_id),
+                    "description": segment_description,
+                    "aspect": str(aspect_id),
+                    "segment": str(segment_id),
+                    "conversation_id": str(conversation_id),
+                    "verbatim_transcript": verbatim_transcript,
+                    "relevant_index": relevant_index,
+                },
+            ) 
+
+    # For aspect : for each segment in aspect, create a aspect_segments
+    pass
