@@ -288,7 +288,9 @@ def get_aspect_response_list(
                 segment["id"] = id
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
-                segment['relevant_segments'] = f'0:{len(segment["verbatim_transcript"])-1}' #TODO: Change this to a small LLM call 
+                segment["relevant_segments"] = (
+                    f"0:{len(segment['verbatim_transcript']) - 1}"  # TODO: Change this to a small LLM call
+                )
                 updated_segments.append(segment)
         formatted_response["segments"] = updated_segments
         aspect_response_list.append(formatted_response)
@@ -326,7 +328,7 @@ def fallback_get_aspect_response_list(
                 segment["id"] = id
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
-                segment['relevant_segments'] = f'0:{len(segment["verbatim_transcript"])-1}'
+                segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
                 updated_segments.append(segment)
 
         formatted_response["segments"] = updated_segments
@@ -492,6 +494,7 @@ def get_views_aspects(
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
     response = {"view": views_dict}
+    update_directus(response)
     return response
 
 
@@ -560,10 +563,11 @@ def get_views_aspects_fallback(
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
     response = {"view": views_dict}
+    update_directus(response)
     return response
 
 
-def update_directus(response):
+def update_directus(response) -> None:
     # Create a view in Directus
     # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
     view = response["view"]
@@ -633,7 +637,14 @@ def update_directus(response):
                     "verbatim_transcript": verbatim_transcript,
                     "relevant_index": relevant_index,
                 },
-            ) 
-
-    # For aspect : for each segment in aspect, create a aspect_segments
-    pass
+            )
+    # Update view processing status
+    directus.update_item(
+        "view",
+        str(view_id),
+        {
+            "processing_status": "Completed",
+            "processing_completed_at": str(datetime.now(timezone.utc)),
+        },
+    )
+    return
