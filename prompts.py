@@ -14,6 +14,7 @@ Analyze the provided documents and identify topics that are most relevant to the
 5. **Uniqueness**: Please keep each topic unique. Please do not return similar topics or a summary of all documents as a topic.
 6. **Consise**: Return as few topics as possible. Merge similar topics. Take a global topic model approach.
 7. **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
+8. **Anonimized**: Do not return segment ID, document count or any such information in the topic description/summary/header. Return only when explicitly asked for.
 
 ## Input Data
 **Documents:**
@@ -51,6 +52,7 @@ Analyze the provided global topic hierarchy and identify topics that are most re
 5. **Fallback**: If no highly relevant topics exist, return nothing.
 6. **Consise**: Return as few topics as possible. Merge similar topics. Take a global topic model approach.
 7. **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
+8. **Anonimized**: Do not return segment ID, document count or any such information in the topic description/summary/header. Return only when explicitly asked for.
 
 
 ## Input Data
@@ -96,6 +98,8 @@ You have been provided with a report of data and findings.
 - **Analytical Approach**: Apply systematic methodology to identify patterns, connections, and insights across multiple data segments
 - **Language**: Please return output in the language specified in the response language field.
 - **Relevance to User Query**: Ensure that the topics are directly relevant to the user query and can be studied further.
+- **Anonimized**: Do not return segment ID, document count or any such information in the topic description/summary/header. Return only when explicitly asked for.
+
 
 ## Response Language:
 {response_language}
@@ -182,6 +186,8 @@ Transform the provided text into a well-structured, professional report that del
 4. **Objective Tone**: Present information factually without bias or speculation
 5. **Actionable Insights**: Highlight key findings that readers can understand and act upon
 6. **Language**: Please return output in the language specified in the response language field.
+7. **Anonimized**: Do not return segment ID, document count or any such information in the topic description/summary/header. Return only when explicitly asked for.
+
 
 ## Report Structure Guidelines
 - **Summary**: Provide a concise overview of the main findings
@@ -248,6 +254,8 @@ Analyze the provided document summaries and generate a comprehensive, in-depth r
 5. **Professional Quality**: Maintain journalistic standards throughout your analysis
 6. **Evidence-Based**: Ground all claims and insights in the provided document summaries
 7. **Coherent Structure**: Organize information in a logical, easy-to-follow format
+8. **Anonimized**: Do not return segment ID, document count or any such information in the topic description/summary/header. Return only when explicitly asked for.
+
 
 ## Input Data
 **Topic:** {aspect}

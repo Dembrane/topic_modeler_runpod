@@ -76,7 +76,7 @@ def initialize_topic_model():
 
         if device == "cuda":
             embedding_model = SentenceTransformer(
-                "intfloat/multilingual-e5-large-instruct", device=device
+                "all-MiniLM-L6-v2", device=device
             )
         else:
             embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -563,11 +563,40 @@ def get_views_aspects_fallback(
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
     response = {"view": views_dict}
-    update_directus(response)
+    update_directus(response, segment_ids)
     return response
 
 
-def update_directus(response) -> None:
+def update_directus(response, segment_ids) -> None:
+    # Get project_id from segment_ids
+    project_id_response = directus.get_items(
+        "conversation_segment",
+        {
+            "query": {
+                "filter": {"id": {"_in": segment_ids}},
+                "fields": ["conversation_id.project_id"],
+            },
+        },
+    )
+    try:
+        unique_projects = list(set([x['conversation_id']['project_id'] for x in project_id_response]))
+        if len(unique_projects) != 1:
+            raise ValueError("Multiple or no unique project IDs found in segment IDs")
+        project_id = unique_projects[0]
+    except KeyError as e:
+        logger.error(f"KeyError while extracting project_id: {e}")
+        raise ValueError("Invalid response structure from Directus for project_id extraction") from e
+    # Create a project analysis run
+    project_analysis_run_id = generate_uuid()
+    directus.create_item(
+        "project_analysis_run",
+        item_data={
+            "id": str(project_analysis_run_id),
+            "project_id": str(project_id),
+            "processing_status": "Generating Views",  # Initial status
+            "processing_started_at": str(datetime.now(timezone.utc)),
+        }
+    )
     # Create a view in Directus
     # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
     view = response["view"]
@@ -580,7 +609,6 @@ def update_directus(response) -> None:
     # Directus create view
     view_id = generate_uuid()
     # TODO: @sameer, 1. There is no description field in the view,
-    # 2. We would need to pass the projec_analysis_run_id to the view
     directus.create_item(
         "view",
         item_data={
@@ -592,6 +620,7 @@ def update_directus(response) -> None:
             "language": language,
             "processing_status": "Generating Aspects",
             "processing_started_at": str(datetime.now(timezone.utc)),
+            "project_analysis_run_id": str(project_analysis_run_id),
         },
     )
 
@@ -642,6 +671,14 @@ def update_directus(response) -> None:
     directus.update_item(
         "view",
         str(view_id),
+        {
+            "processing_status": "Completed",
+            "processing_completed_at": str(datetime.now(timezone.utc)),
+        },
+    )
+    directus.update_item(
+        "project_analysis_run",
+        str(project_analysis_run_id),
         {
             "processing_status": "Completed",
             "processing_completed_at": str(datetime.now(timezone.utc)),
