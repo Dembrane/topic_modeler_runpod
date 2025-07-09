@@ -336,6 +336,126 @@ def fallback_get_aspect_response_list(
     return aspect_response_list
 
 
+def update_directus(response, segment_ids) -> None:
+    # Get project_id from segment_ids
+    project_id_response = directus.get_items(
+        "conversation_segment",
+        {
+            "query": {
+                "filter": {"id": {"_in": segment_ids}},
+                "fields": ["conversation_id.project_id"],
+            },
+        },
+    )
+    try:
+        unique_projects = list(set([x['conversation_id']['project_id'] for x in project_id_response]))
+        if len(unique_projects) != 1:
+            raise ValueError("Multiple or no unique project IDs found in segment IDs")
+        project_id = unique_projects[0]
+    except KeyError as e:
+        logger.error(f"KeyError while extracting project_id: {e}")
+        raise ValueError("Invalid response structure from Directus for project_id extraction") from e
+    # Create a project analysis run
+    project_analysis_run_id = generate_uuid()
+    directus.create_item(
+        "project_analysis_run",
+        item_data={
+            "id": str(project_analysis_run_id),
+            "project_id": str(project_id),
+            "processing_status": "Generating Views",  # Initial status
+            "processing_started_at": str(datetime.now(timezone.utc)),
+        }
+    )
+    # Create a view in Directus
+    # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
+    view = response["view"]
+    title = view.get("title", "")
+    description = view.get("description", "")
+    summary = view.get("summary", "")
+    seed = view.get("seed", "")
+    language = view.get("language", "en")
+    aspects = view.get("aspects", [])
+    # Directus create view
+    view_id = generate_uuid()
+    # TODO: @sameer, 1. There is no description field in the view,
+    directus.create_item(
+        "view",
+        item_data={
+            "id": str(view_id),
+            "name": title,
+            "description": description,
+            "summary": summary,
+            "seed": seed,
+            "language": language,
+            "processing_status": "Generating Aspects",
+            "processing_started_at": str(datetime.now(timezone.utc)),
+            "project_analysis_run_id": str(project_analysis_run_id),
+        },
+    )
+
+    # For aspect : create aspect
+    # (['title', 'description', 'summary', 'segments', 'image_url'])
+    for aspect in aspects:
+        aspect_id = generate_uuid()
+        aspect_title = aspect.get("title", "")
+        aspect_description = aspect.get("description", "")
+        aspect_summary = aspect.get("summary", "")
+        segments = aspect.get("segments", [])
+        image_url = aspect.get("image_url", "")
+        directus.create_item(
+            "aspect",
+            {
+                "id": str(aspect_id),
+                "name": aspect_title,
+                "description": aspect_description,
+                "short_summary": aspect_description,
+                "long_summary": aspect_summary,
+                "image_url": image_url,
+                "view_id": str(view_id),
+            },
+        )
+
+        # Directus create aspect
+        for segment in segments:
+            # ['description', 'id', 'conversation_id', 'verbatim_transcript']
+            aspect_segment_id = generate_uuid()
+            segment_description = segment.get("description", "")
+            segment_id = segment.get("id", "")
+            conversation_id = segment.get("conversation_id", "")
+            verbatim_transcript = segment.get("verbatim_transcript", "")
+            relevant_index = segment.get("relevant_segments", "")
+            directus.create_item(
+                "aspect_segment",
+                {
+                    "id": str(aspect_segment_id),
+                    "description": segment_description,
+                    "aspect": str(aspect_id),
+                    "segment": str(segment_id),
+                    "conversation_id": str(conversation_id),
+                    "verbatim_transcript": verbatim_transcript,
+                    "relevant_index": relevant_index,
+                },
+            )
+    # Update view processing status
+    directus.update_item(
+        "view",
+        str(view_id),
+        {
+            "processing_status": "Completed",
+            "processing_completed_at": str(datetime.now(timezone.utc)),
+        },
+    )
+    directus.update_item(
+        "project_analysis_run",
+        str(project_analysis_run_id),
+        {
+            "processing_status": "Completed",
+            "processing_completed_at": str(datetime.now(timezone.utc)),
+        },
+    )
+    return
+
+
 def summarise_aspects(aspect_response_list: List[Dict], response_language: str = "en"):
     """
     Generate a summary of multiple aspects.
@@ -566,122 +686,3 @@ def get_views_aspects_fallback(
     update_directus(response, segment_ids)
     return response
 
-
-def update_directus(response, segment_ids) -> None:
-    # Get project_id from segment_ids
-    project_id_response = directus.get_items(
-        "conversation_segment",
-        {
-            "query": {
-                "filter": {"id": {"_in": segment_ids}},
-                "fields": ["conversation_id.project_id"],
-            },
-        },
-    )
-    try:
-        unique_projects = list(set([x['conversation_id']['project_id'] for x in project_id_response]))
-        if len(unique_projects) != 1:
-            raise ValueError("Multiple or no unique project IDs found in segment IDs")
-        project_id = unique_projects[0]
-    except KeyError as e:
-        logger.error(f"KeyError while extracting project_id: {e}")
-        raise ValueError("Invalid response structure from Directus for project_id extraction") from e
-    # Create a project analysis run
-    project_analysis_run_id = generate_uuid()
-    directus.create_item(
-        "project_analysis_run",
-        item_data={
-            "id": str(project_analysis_run_id),
-            "project_id": str(project_id),
-            "processing_status": "Generating Views",  # Initial status
-            "processing_started_at": str(datetime.now(timezone.utc)),
-        }
-    )
-    # Create a view in Directus
-    # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
-    view = response["view"]
-    title = view.get("title", "")
-    description = view.get("description", "")
-    summary = view.get("summary", "")
-    seed = view.get("seed", "")
-    language = view.get("language", "en")
-    aspects = view.get("aspects", [])
-    # Directus create view
-    view_id = generate_uuid()
-    # TODO: @sameer, 1. There is no description field in the view,
-    directus.create_item(
-        "view",
-        item_data={
-            "id": str(view_id),
-            "name": title,
-            "description": description,
-            "summary": summary,
-            "seed": seed,
-            "language": language,
-            "processing_status": "Generating Aspects",
-            "processing_started_at": str(datetime.now(timezone.utc)),
-            "project_analysis_run_id": str(project_analysis_run_id),
-        },
-    )
-
-    # For aspect : create aspect
-    # (['title', 'description', 'summary', 'segments', 'image_url'])
-    for aspect in aspects:
-        aspect_id = generate_uuid()
-        aspect_title = aspect.get("title", "")
-        aspect_description = aspect.get("description", "")
-        aspect_summary = aspect.get("summary", "")
-        segments = aspect.get("segments", [])
-        image_url = aspect.get("image_url", "")
-        directus.create_item(
-            "aspect",
-            {
-                "id": str(aspect_id),
-                "name": aspect_title,
-                "description": aspect_description,
-                "short_summary": aspect_description,
-                "long_summary": aspect_summary,
-                "image_url": image_url,
-                "view_id": str(view_id),
-            },
-        )
-
-        # Directus create aspect
-        for segment in segments:
-            # ['description', 'id', 'conversation_id', 'verbatim_transcript']
-            aspect_segment_id = generate_uuid()
-            segment_description = segment.get("description", "")
-            segment_id = segment.get("id", "")
-            conversation_id = segment.get("conversation_id", "")
-            verbatim_transcript = segment.get("verbatim_transcript", "")
-            relevant_index = segment.get("relevant_segments", "")
-            directus.create_item(
-                "aspect_segment",
-                {
-                    "id": str(aspect_segment_id),
-                    "description": segment_description,
-                    "aspect": str(aspect_id),
-                    "segment": str(segment_id),
-                    "conversation_id": str(conversation_id),
-                    "verbatim_transcript": verbatim_transcript,
-                    "relevant_index": relevant_index,
-                },
-            )
-    # Update view processing status
-    directus.update_item(
-        "view",
-        str(view_id),
-        {
-            "processing_status": "Completed",
-            "processing_completed_at": str(datetime.now(timezone.utc)),
-        },
-    )
-    directus.update_item(
-        "project_analysis_run",
-        str(project_analysis_run_id),
-        {
-            "processing_status": "Completed",
-            "processing_completed_at": str(datetime.now(timezone.utc)),
-        },
-    )
-    return
