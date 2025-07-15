@@ -1,12 +1,10 @@
 import os
-import logging
 
 import runpod
 from utils import get_views_aspects, get_views_aspects_fallback
+from runpod import RunPodLogger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = RunPodLogger()
 
 
 def handler(event):
@@ -58,7 +56,7 @@ def handler(event):
         logger.info("Standard execution completed successfully")
         return response
     except Exception as e:
-        logger.warning(
+        logger.info(
             f"Error in default get_views_aspects: {e}; falling back to get_views_aspects_fallback"
         )
         try:

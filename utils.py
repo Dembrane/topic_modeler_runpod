@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
 import torch
+import pandas as pd
 import requests
 from umap import UMAP
 from dotenv import load_dotenv
@@ -15,8 +16,8 @@ from prompts import (
     rag_user_prompt,
     rag_system_prompt,
     initial_rag_prompt,
-    topic_model_prompt,
-    view_summary_prompt,
+    topic_model_user_prompt,
+    view_summary_user_prompt,
     topic_model_system_prompt,
     view_summary_system_prompt,
     vanilla_topic_model_user_prompt,
@@ -431,7 +432,7 @@ def summarise_aspects(aspect_response_list: List[Dict], response_language: str =
         {"role": "system", "content": view_summary_system_prompt},
         {
             "role": "user",
-            "content": view_summary_prompt.format(
+            "content": view_summary_user_prompt.format(
                 view_text=view_text, response_language=response_language
             ),
         },
@@ -529,22 +530,40 @@ def get_views_aspects(
         tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
     else:
         topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
-        if (
-            token_counter(
+        repr_docs_token_length = threshold_context_length * 1.1
+        nr_repr_docs = 100
+        while repr_docs_token_length > threshold_context_length * 0.8:
+            doc_topic = pd.DataFrame(
+                {
+                    "Topic": topic_model.topics_,
+                    "ID": range(len(topic_model.topics_)),
+                    "Document": docs,
+                }
+            )
+            repr_docs, _, _, _ = topic_model._extract_representative_docs(
+                topic_model.c_tf_idf_,
+                doc_topic,
+                topic_model.topic_representations_,
+                nr_samples=1000,
+                nr_repr_docs=nr_repr_docs,
+            )
+            rep_doc_list = {k: v for k, v in repr_docs.items() if k != -1}
+            nl = "\n\n"
+            rep_docs_formatted = [
+                f"Document set {k} : \n {nl.join(v)}" for k, v in rep_doc_list.items()
+            ]
+            representative_documents = "\n\n\n\n\n\n".join(rep_docs_formatted)
+            repr_docs_token_length = token_counter(
                 model=str(os.getenv("AZURE_MODEL")),
-                text=topic_model.get_topic_tree(hierarchical_topics),
+                text=representative_documents,
             )
-            > threshold_context_length * 0.8
-        ):
-            topics, probs, hierarchical_topics = run_topic_model_hierarchical(
-                topic_model, docs, nr_topics=50
-            )
+            nr_repr_docs = round(nr_repr_docs * 0.75)
         messages = [
             {"role": "system", "content": topic_model_system_prompt},
             {
                 "role": "user",
-                "content": topic_model_prompt.format(
-                    global_topic_hierarchy=topic_model.get_topic_tree(hierarchical_topics),
+                "content": topic_model_user_prompt.format(
+                    representative_documents=representative_documents,
                     user_prompt=user_prompt,
                     response_language=response_language,
                 ),
