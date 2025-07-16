@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
 import torch
+import pandas as pd
 import requests
 from umap import UMAP
 from dotenv import load_dotenv
@@ -15,8 +16,8 @@ from prompts import (
     rag_user_prompt,
     rag_system_prompt,
     initial_rag_prompt,
-    topic_model_prompt,
-    view_summary_prompt,
+    topic_model_user_prompt,
+    view_summary_user_prompt,
     topic_model_system_prompt,
     view_summary_system_prompt,
     vanilla_topic_model_user_prompt,
@@ -75,9 +76,7 @@ def initialize_topic_model():
         logger.info(f"Using device: {device}")
 
         if device == "cuda":
-            embedding_model = SentenceTransformer(
-                "all-MiniLM-L6-v2", device=device
-            )
+            embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
         else:
             embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -274,7 +273,9 @@ def get_aspect_response_list(
             {
                 "role": "user",
                 "content": rag_user_prompt.format(
-                    response_language=response_language, input_report=rag_prompt
+                    response_language=response_language,
+                    input_report=rag_prompt,
+                    tentative_aspect_topic=tentative_aspect_topic,
                 ),
             },
         ]
@@ -336,38 +337,7 @@ def fallback_get_aspect_response_list(
     return aspect_response_list
 
 
-def update_directus(response, segment_ids) -> None:
-    # Get project_id from segment_ids
-    project_id_response = directus.get_items(
-        "conversation_segment",
-        {
-            "query": {
-                "filter": {"id": {"_in": segment_ids}},
-                "fields": ["conversation_id.project_id"],
-            },
-        },
-    )
-    try:
-        unique_projects = list(set([x['conversation_id']['project_id'] for x in project_id_response]))
-        if len(unique_projects) != 1:
-            raise ValueError("Multiple or no unique project IDs found in segment IDs")
-        project_id = unique_projects[0]
-    except KeyError as e:
-        logger.error(f"KeyError while extracting project_id: {e}")
-        raise ValueError("Invalid response structure from Directus for project_id extraction") from e
-    # Create a project analysis run
-    project_analysis_run_id = generate_uuid()
-    directus.create_item(
-        "project_analysis_run",
-        item_data={
-            "id": str(project_analysis_run_id),
-            "project_id": str(project_id),
-            "processing_status": "Generating Views",  # Initial status
-            "processing_started_at": str(datetime.now(timezone.utc)),
-        }
-    )
-    # Create a view in Directus
-    # (['title', 'description', 'summary', 'aspects', 'seed', 'language'])
+def update_directus(response, project_analysis_run_id) -> None:
     view = response["view"]
     title = view.get("title", "")
     description = view.get("description", "")
@@ -375,9 +345,7 @@ def update_directus(response, segment_ids) -> None:
     seed = view.get("seed", "")
     language = view.get("language", "en")
     aspects = view.get("aspects", [])
-    # Directus create view
     view_id = generate_uuid()
-    # TODO: @sameer, 1. There is no description field in the view,
     directus.create_item(
         "view",
         item_data={
@@ -392,9 +360,6 @@ def update_directus(response, segment_ids) -> None:
             "project_analysis_run_id": str(project_analysis_run_id),
         },
     )
-
-    # For aspect : create aspect
-    # (['title', 'description', 'summary', 'segments', 'image_url'])
     for aspect in aspects:
         aspect_id = generate_uuid()
         aspect_title = aspect.get("title", "")
@@ -414,10 +379,7 @@ def update_directus(response, segment_ids) -> None:
                 "view_id": str(view_id),
             },
         )
-
-        # Directus create aspect
         for segment in segments:
-            # ['description', 'id', 'conversation_id', 'verbatim_transcript']
             aspect_segment_id = generate_uuid()
             segment_description = segment.get("description", "")
             segment_id = segment.get("id", "")
@@ -436,7 +398,6 @@ def update_directus(response, segment_ids) -> None:
                     "relevant_index": relevant_index,
                 },
             )
-    # Update view processing status
     directus.update_item(
         "view",
         str(view_id),
@@ -445,18 +406,14 @@ def update_directus(response, segment_ids) -> None:
             "processing_completed_at": str(datetime.now(timezone.utc)),
         },
     )
-    directus.update_item(
-        "project_analysis_run",
-        str(project_analysis_run_id),
-        {
-            "processing_status": "Completed",
-            "processing_completed_at": str(datetime.now(timezone.utc)),
-        },
-    )
     return
 
 
-def summarise_aspects(aspect_response_list: List[Dict], response_language: str = "en"):
+def summarise_aspects(
+    aspect_response_list: List[Dict],
+    response_language: str = "en",
+    user_prompt: str = "",
+):
     """
     Generate a summary of multiple aspects.
 
@@ -481,8 +438,10 @@ def summarise_aspects(aspect_response_list: List[Dict], response_language: str =
         {"role": "system", "content": view_summary_system_prompt},
         {
             "role": "user",
-            "content": view_summary_prompt.format(
-                view_text=view_text, response_language=response_language
+            "content": view_summary_user_prompt.format(
+                view_text=view_text,
+                response_language=response_language,
+                user_prompt=user_prompt,
             ),
         },
     ]
@@ -493,8 +452,9 @@ def summarise_aspects(aspect_response_list: List[Dict], response_language: str =
 def get_views_aspects(
     segment_ids: List[str],
     user_prompt: str,
+    project_analysis_run_id: str,
     response_language: str | None = None,
-    threshold_context_length: int = 100000,
+    threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
 ) -> Dict:
     """
     Generate comprehensive views and aspects analysis for conversation segments.
@@ -578,22 +538,40 @@ def get_views_aspects(
         tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
     else:
         topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
-        if (
-            token_counter(
+        repr_docs_token_length = threshold_context_length * 1.1
+        nr_repr_docs = 100
+        while repr_docs_token_length > threshold_context_length * 0.8 and nr_repr_docs > 3:
+            doc_topic = pd.DataFrame(
+                {
+                    "Topic": topic_model.topics_,
+                    "ID": range(len(topic_model.topics_)),
+                    "Document": docs,
+                }
+            )
+            repr_docs, _, _, _ = topic_model._extract_representative_docs(
+                topic_model.c_tf_idf_,
+                doc_topic,
+                topic_model.topic_representations_,
+                nr_samples=1000,
+                nr_repr_docs=nr_repr_docs,
+            )
+            rep_doc_list = {k: v for k, v in repr_docs.items() if k != -1}
+            nl = "\n\n"
+            rep_docs_formatted = [
+                f"Document set {k} : \n {nl.join(v)}" for k, v in rep_doc_list.items()
+            ]
+            representative_documents = "\n\n\n\n\n\n".join(rep_docs_formatted)
+            repr_docs_token_length = token_counter(
                 model=str(os.getenv("AZURE_MODEL")),
-                text=topic_model.get_topic_tree(hierarchical_topics),
+                text=representative_documents,
             )
-            > threshold_context_length * 0.8
-        ):
-            topics, probs, hierarchical_topics = run_topic_model_hierarchical(
-                topic_model, docs, nr_topics=50
-            )
+            nr_repr_docs = round(nr_repr_docs * 0.75)
         messages = [
             {"role": "system", "content": topic_model_system_prompt},
             {
                 "role": "user",
-                "content": topic_model_prompt.format(
-                    global_topic_hierarchy=topic_model.get_topic_tree(hierarchical_topics),
+                "content": topic_model_user_prompt.format(
+                    representative_documents=representative_documents,
                     user_prompt=user_prompt,
                     response_language=response_language,
                 ),
@@ -609,20 +587,25 @@ def get_views_aspects(
         auth_token=os.getenv("RAG_SERVER_AUTH_TOKEN"),
         response_language=response_language,
     )
-    views_dict = summarise_aspects(aspect_response_list, response_language=response_language)
+    views_dict = summarise_aspects(
+        aspect_response_list,
+        response_language=response_language,
+        user_prompt=user_prompt,
+    )
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
     response = {"view": views_dict}
-    update_directus(response)
+    update_directus(response, project_analysis_run_id)
     return response
 
 
 def get_views_aspects_fallback(
     segment_ids: List[str],
     user_prompt: str,
+    project_analysis_run_id: str,
     response_language: str | None = None,
-    threshold_context_length: int = 100000,
+    threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
 ) -> Dict:
     import random
 
@@ -678,11 +661,14 @@ def get_views_aspects_fallback(
         segment_2_transcript,
         response_language=response_language,
     )
-    views_dict = summarise_aspects(aspect_response_list, response_language=response_language)
+    views_dict = summarise_aspects(
+        aspect_response_list,
+        response_language=response_language,
+        user_prompt=user_prompt,
+    )
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
     response = {"view": views_dict}
-    update_directus(response, segment_ids)
+    update_directus(response, project_analysis_run_id)
     return response
-
