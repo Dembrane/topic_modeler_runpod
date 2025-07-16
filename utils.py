@@ -52,6 +52,17 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def get_directus_token():
+    DIRECTUS_USERNAME = str(os.getenv("DIRECTUS_USERNAME"))
+    DIRECTUS_PASSWORD = str(os.getenv("DIRECTUS_PASSWORD"))
+    client = DirectusClient(
+        url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD
+    )
+    client.login()
+    token = client.get_token()
+    return token
+
+
 def initialize_topic_model():
     """
     Initialize BERTopic model with GPU acceleration if available.
@@ -209,15 +220,14 @@ def get_rag_prompt(
     }
 
     headers = {"Content-Type": "application/json"}
-    cookies = {
-        "directus_session_token": os.getenv(
-            "RAG_SERVER_AUTH_TOKEN"
-        )  # TODO: @sameer, please look into how to make this call with token
-    }
+    # Bearer token
+    # headers["Authorization"] = f"Bearer {get_directus_token()}"
+    cookies = {"directus_session_token": get_directus_token()}
 
     try:
         logger.info(f"Making RAG API request to {url}")
-        response = requests.post(url, json=payload, headers=headers, cookies=cookies, timeout=120)
+        # response = requests.post(url, json=payload, headers=headers, cookies=cookies, timeout=120)
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
         response.raise_for_status()
 
         result = response.text
