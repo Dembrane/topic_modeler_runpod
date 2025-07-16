@@ -454,7 +454,7 @@ def get_views_aspects(
     user_prompt: str,
     project_analysis_run_id: str,
     response_language: str | None = None,
-    threshold_context_length: int = 100000,
+    threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
 ) -> Dict:
     """
     Generate comprehensive views and aspects analysis for conversation segments.
@@ -605,7 +605,7 @@ def get_views_aspects_fallback(
     user_prompt: str,
     project_analysis_run_id: str,
     response_language: str | None = None,
-    threshold_context_length: int = 100000,
+    threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
 ) -> Dict:
     import random
 

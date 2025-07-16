@@ -337,11 +337,11 @@ This query guided the generation of multiple detailed aspect reports. You now ne
 ## Required Structure
 
 **title**: string
-- Create a concise, engaging title (maximum 8-10 words) that directly addresses the user's query
-- Transform the user's question into a statement or findings-focused headline
-- Use clear, direct language from the user prompt but make it punchy and readable
-- Avoid listing multiple topics - instead focus on the overarching theme or finding
-- Example: If user asks "What are the main topics discussed?" → "Key Discussion Topics and Themes"
+- Create a concise, engaging title (maximum 8-10 words) that reflects the user's intent and request level
+- Stay at the same level of abstraction as the user's query - don't get more specific than they asked
+- Focus on the TYPE of analysis requested rather than the specific findings
+- Avoid mentioning specific topics/domains found - keep it about the analytical approach
+- Examples: "Please summarise all topics" → "Complete Topic Summary", "What are the main themes?" → "Key Themes Analysis"
 
 **description**: string (2-3 sentences maximum)
 - Provide a concise overview that introduces the complete analysis
