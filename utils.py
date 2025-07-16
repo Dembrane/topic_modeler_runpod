@@ -220,13 +220,9 @@ def get_rag_prompt(
     }
 
     headers = {"Content-Type": "application/json"}
-    # Bearer token
-    # headers["Authorization"] = f"Bearer {get_directus_token()}"
-    cookies = {"directus_session_token": get_directus_token()}
-
+    headers["Authorization"] = f"Bearer {get_directus_token()}"
     try:
         logger.info(f"Making RAG API request to {url}")
-        # response = requests.post(url, json=payload, headers=headers, cookies=cookies, timeout=120)
         response = requests.post(url, json=payload, headers=headers, timeout=120)
         response.raise_for_status()
 
