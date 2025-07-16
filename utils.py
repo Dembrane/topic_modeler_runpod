@@ -273,7 +273,9 @@ def get_aspect_response_list(
             {
                 "role": "user",
                 "content": rag_user_prompt.format(
-                    response_language=response_language, input_report=rag_prompt
+                    response_language=response_language,
+                    input_report=rag_prompt,
+                    tentative_aspect_topic=tentative_aspect_topic,
                 ),
             },
         ]
@@ -407,7 +409,11 @@ def update_directus(response, project_analysis_run_id) -> None:
     return
 
 
-def summarise_aspects(aspect_response_list: List[Dict], response_language: str = "en"):
+def summarise_aspects(
+    aspect_response_list: List[Dict],
+    response_language: str = "en",
+    user_prompt: str = "",
+):
     """
     Generate a summary of multiple aspects.
 
@@ -433,7 +439,9 @@ def summarise_aspects(aspect_response_list: List[Dict], response_language: str =
         {
             "role": "user",
             "content": view_summary_user_prompt.format(
-                view_text=view_text, response_language=response_language
+                view_text=view_text,
+                response_language=response_language,
+                user_prompt=user_prompt,
             ),
         },
     ]
@@ -532,7 +540,7 @@ def get_views_aspects(
         topics, probs, hierarchical_topics = run_topic_model_hierarchical(topic_model, docs)
         repr_docs_token_length = threshold_context_length * 1.1
         nr_repr_docs = 100
-        while repr_docs_token_length > threshold_context_length * 0.8:
+        while repr_docs_token_length > threshold_context_length * 0.8 and nr_repr_docs > 3:
             doc_topic = pd.DataFrame(
                 {
                     "Topic": topic_model.topics_,
@@ -579,7 +587,11 @@ def get_views_aspects(
         auth_token=os.getenv("RAG_SERVER_AUTH_TOKEN"),
         response_language=response_language,
     )
-    views_dict = summarise_aspects(aspect_response_list, response_language=response_language)
+    views_dict = summarise_aspects(
+        aspect_response_list,
+        response_language=response_language,
+        user_prompt=user_prompt,
+    )
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
@@ -649,7 +661,11 @@ def get_views_aspects_fallback(
         segment_2_transcript,
         response_language=response_language,
     )
-    views_dict = summarise_aspects(aspect_response_list, response_language=response_language)
+    views_dict = summarise_aspects(
+        aspect_response_list,
+        response_language=response_language,
+        user_prompt=user_prompt,
+    )
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
