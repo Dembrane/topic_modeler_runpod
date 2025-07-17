@@ -351,6 +351,8 @@ def update_directus(response, project_analysis_run_id) -> None:
     seed = view.get("seed", "")
     language = view.get("language", "en")
     aspects = view.get("aspects", [])
+    user_input = view.get("user_input", "")
+    user_input_description = view.get("user_input_description", "")
     view_id = generate_uuid()
     directus.create_item(
         "view",
@@ -364,6 +366,8 @@ def update_directus(response, project_analysis_run_id) -> None:
             "processing_status": "Generating Aspects",
             "processing_started_at": str(datetime.now(timezone.utc)),
             "project_analysis_run_id": str(project_analysis_run_id),
+            "user_input": user_input,
+            "user_input_description": user_input_description,
         },
     )
     for aspect in aspects:
@@ -404,12 +408,12 @@ def update_directus(response, project_analysis_run_id) -> None:
                     "relevant_index": relevant_index,
                 },
             )
-    directus.update_item(
-        "view",
-        str(view_id),
+    directus.create_item(
+        "processing_status",
         {
-            "processing_status": "Completed",
-            "processing_completed_at": str(datetime.now(timezone.utc)),
+            "project_analysis_run_id": str(project_analysis_run_id),
+            "event": "runpod:topic_modeler.completed",
+            "message": "view_id: " + str(view_id),
         },
     )
     return
@@ -461,6 +465,8 @@ def get_views_aspects(
     project_analysis_run_id: str,
     response_language: str | None = None,
     threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
+    user_input: str = "",
+    user_input_description: str = "",
 ) -> Dict:
     """
     Generate comprehensive views and aspects analysis for conversation segments.
@@ -601,6 +607,8 @@ def get_views_aspects(
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
+    views_dict["user_input"] = user_input
+    views_dict["user_input_description"] = user_input_description
     response = {"view": views_dict}
     update_directus(response, project_analysis_run_id)
     return response
@@ -612,6 +620,8 @@ def get_views_aspects_fallback(
     project_analysis_run_id: str,
     response_language: str | None = None,
     threshold_context_length: int = int(os.getenv("THRESHOLD_CONTEXT_LENGTH", 100000)),
+    user_input: str = "",
+    user_input_description: str = "",
 ) -> Dict:
     import random
 
@@ -675,6 +685,8 @@ def get_views_aspects_fallback(
     views_dict["aspects"] = aspect_response_list
     views_dict["seed"] = user_prompt
     views_dict["language"] = response_language
+    views_dict["user_input"] = user_input
+    views_dict["user_input_description"] = user_input_description
     response = {"view": views_dict}
     update_directus(response, project_analysis_run_id)
     return response

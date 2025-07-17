@@ -14,7 +14,12 @@ def handler(event):
     logger.info(f"Input received: {list(input.keys())}")
 
     segment_ids = [str(segment_id) for segment_id in input["segment_ids"]]
-    user_prompt = input["user_prompt"]
+
+    user_input = input.get("user_query", "")
+    user_input_description = input.get("user_query_description", "")
+
+    user_prompt = user_input + "\n\n" + user_input_description
+
     response_language = input["response_language"]
     project_analysis_run_id = input["project_analysis_run_id"]
 
@@ -40,6 +45,8 @@ def handler(event):
                 project_analysis_run_id,
                 response_language,
                 threshold_context_length=100000,
+                user_input=user_input,
+                user_input_description=user_input_description,
             )
             logger.info("Fallback execution completed successfully")
             return response
@@ -51,7 +58,12 @@ def handler(event):
     logger.info("Attempting standard get_views_aspects execution")
     try:
         response = get_views_aspects(
-            segment_ids, user_prompt, project_analysis_run_id, response_language
+            segment_ids,
+            user_prompt,
+            project_analysis_run_id,
+            response_language,
+            user_input=user_input,
+            user_input_description=user_input_description,
         )
         logger.info("Standard execution completed successfully")
         return response
@@ -67,6 +79,8 @@ def handler(event):
                 project_analysis_run_id,
                 response_language,
                 threshold_context_length=100000,
+                user_input=user_input,
+                user_input_description=user_input_description,
             )
             logger.info("Fallback execution completed successfully after standard method failure")
             return response
