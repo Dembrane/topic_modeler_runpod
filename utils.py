@@ -42,10 +42,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 DIRECTUS_BASE_URL = str(os.getenv("DIRECTUS_BASE_URL"))
-DIRECTUS_TOKEN = str(os.getenv("DIRECTUS_TOKEN"))
+DIRECTUS_USERNAME = str(os.getenv("DIRECTUS_USERNAME"))
+DIRECTUS_PASSWORD = str(os.getenv("DIRECTUS_PASSWORD"))
 
-
-directus = DirectusClient(url=DIRECTUS_BASE_URL, token=DIRECTUS_TOKEN)
+directus = DirectusClient(url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD)
 
 
 def generate_uuid() -> str:
