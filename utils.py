@@ -1,5 +1,6 @@
 # [X] TODO: Add retry logic in rag calls
 # [X] TODO: Check why user_input and user_input_description are not being populated in directus
+# [X] TODO: Add image URL to the response
 # [ ] TODO: Change backend of echo to respond only with data not prompt
 
 import os
@@ -15,6 +16,7 @@ import pandas as pd
 import requests
 from umap import UMAP
 from dotenv import load_dotenv
+from openai import OpenAI
 from runpod import RunPodLogger
 from hdbscan import HDBSCAN
 from litellm import completion
@@ -50,6 +52,39 @@ DIRECTUS_PASSWORD = str(os.getenv("DIRECTUS_PASSWORD"))
 directus = DirectusClient(
     url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD
 )
+
+client = OpenAI(base_url=os.getenv("OPENAI_API_BASE_URL"), api_key=os.getenv("OPENAI_API_KEY"))
+
+
+def get_image_url(aspect_title: str, aspect_summary: str) -> str:
+    """
+    Generate an image URL using the MODEST model.
+
+    Returns:
+        str: Generated image URL or empty string if generation fails
+    """
+    PROMPT = f"""
+    In an impressionism style painting, represent the theme of the following context and summary.
+    Use shades of neon turquoise, light blue and light pink. Always capture the essence of the text from a larger perspective.
+    NEVER INCLUDE text in the image. I REPEAT, don't include any text in the image.
+
+    What the image should be about: "{aspect_title}"
+    Summary of ideas: "{aspect_summary}"
+    """
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=PROMPT,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        image_url = response.data[0].url
+        logger.info(f"Successfully generated image URL: {image_url}")
+        return image_url
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        return ""
 
 
 def generate_uuid() -> str:
@@ -309,7 +344,9 @@ def get_aspect_response_list(
             jitter=1.0,
             logger=logger,
         )
-        formatted_response["image_url"] = ""
+        formatted_response["image_url"] = get_image_url(
+            formatted_response["title"], formatted_response["description"]
+        )
         updated_segments = []
         for segment in formatted_response["segments"]:
             id = segment["segment_id"]
@@ -347,7 +384,9 @@ def fallback_get_aspect_response_list(
             },
         ]
         formatted_response = run_formated_llm_call(messages, Aspect)
-        formatted_response["image_url"] = ""
+        formatted_response["image_url"] = get_image_url(
+            formatted_response["title"], formatted_response["description"]
+        )
         updated_segments = []
         for segment in formatted_response["segments"]:
             id = segment["segment_id"]
