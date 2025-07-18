@@ -1,11 +1,12 @@
-# [ ] TODO: Add retry logic in rag calls
-# [ ] TODO: Check why  user_input and user_input_description are not being populated in directus
+# [X] TODO: Add retry logic in rag calls
+# [X] TODO: Check why user_input and user_input_description are not being populated in directus
 # [ ] TODO: Change backend of echo to respond only with data not prompt
 
 import os
 import json
+import time
 import uuid
-import logging
+import random
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
@@ -14,6 +15,7 @@ import pandas as pd
 import requests
 from umap import UMAP
 from dotenv import load_dotenv
+from runpod import RunPodLogger
 from hdbscan import HDBSCAN
 from litellm import completion
 from prompts import (
@@ -38,12 +40,8 @@ from bertopic.vectorizers import ClassTfidfTransformer
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 
-# Configure logging
-log_level = os.getenv("DEBUG", "False")
-level = logging.DEBUG if log_level.lower() == "true" else logging.INFO
-logging.basicConfig(level=level)
-logger = logging.getLogger(__name__)
 load_dotenv()
+logger = RunPodLogger()
 
 DIRECTUS_BASE_URL = str(os.getenv("DIRECTUS_BASE_URL"))
 DIRECTUS_USERNAME = str(os.getenv("DIRECTUS_USERNAME"))
@@ -181,13 +179,29 @@ def run_formated_llm_call(messages: List[Dict[str, str]], response_format: type[
     return json.loads(response.choices[0].message.content)
 
 
+def retry_with_backoff(
+    func, max_retries=3, initial_delay=2, backoff_factor=2, jitter=0.5, logger=None, *args, **kwargs
+):
+    delay = initial_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if logger:
+                logger.info(f"Attempt {attempt} failed with error: {e}")
+            if attempt == max_retries:
+                if logger:
+                    logger.error(f"All {max_retries} attempts failed. Raising exception.")
+                raise
+            sleep_time = delay + random.uniform(0, jitter)
+            if logger:
+                logger.info(f"Retrying in {sleep_time:.2f} seconds...")
+            time.sleep(sleep_time)
+            delay *= backoff_factor
+
+
 def get_rag_prompt(
-    query: str,
-    segment_ids: Optional[List[str]] = None,
-    rag_server_url: Optional[str] = None,
-    auth_token: Optional[
-        str
-    ] = None,  # TODO: @sameer, please look into how to make this call with token
+    query: str, segment_ids: Optional[List[str]] = None, rag_server_url: Optional[str] = None
 ) -> str:
     """
     Retrieve RAG prompt by calling the external RAG server API.
@@ -196,7 +210,6 @@ def get_rag_prompt(
         query: The query string to send to the RAG server
         segment_ids: Optional list of segment IDs to include in the RAG query
         rag_server_url: Optional base URL of the RAG server (defaults to env variable)
-        auth_token: Optional bearer token for authentication (defaults to env variable)
 
     Returns:
         str: RAG prompt string from the server
@@ -248,7 +261,6 @@ def get_aspect_response_list(
     aspects: List[str],
     segment_ids: List[str],
     segment_2_transcript: Dict[int, str],
-    auth_token: Optional[str] = None,
     response_language: str = "en",
 ):
     """
@@ -258,7 +270,6 @@ def get_aspect_response_list(
         aspects: List of aspect topics to analyze
         segment_ids: List of segment IDs to process
         segment_2_transcript: Dictionary mapping segment IDs to their transcripts
-        auth_token: Optional authentication token for RAG server
         response_language: Language code for response generation (default: 'en')
 
     Returns:
@@ -276,9 +287,7 @@ def get_aspect_response_list(
             tentative_aspect_topic=tentative_aspect_topic
         )
         rag_prompt = get_rag_prompt(
-            formated_initial_rag_prompt,
-            segment_ids=[str(segment_id) for segment_id in segment_ids],
-            auth_token=auth_token,
+            formated_initial_rag_prompt, segment_ids=[str(segment_id) for segment_id in segment_ids]
         )
         rag_messages = [
             {"role": "system", "content": rag_system_prompt},
@@ -291,7 +300,15 @@ def get_aspect_response_list(
                 ),
             },
         ]
-        formatted_response = run_formated_llm_call(rag_messages, Aspect)
+        # Retry logic for LLM call
+        formatted_response = retry_with_backoff(
+            lambda: run_formated_llm_call(rag_messages, Aspect),
+            max_retries=3,
+            initial_delay=2,
+            backoff_factor=2,
+            jitter=1.0,
+            logger=logger,
+        )
         formatted_response["image_url"] = ""
         updated_segments = []
         for segment in formatted_response["segments"]:
@@ -301,9 +318,7 @@ def get_aspect_response_list(
                 segment["id"] = id
                 segment["conversation_id"] = ""
                 segment["verbatim_transcript"] = segment_2_transcript[id]
-                segment["relevant_segments"] = (
-                    f"0:{len(segment['verbatim_transcript']) - 1}"  # TODO: Change this to a small LLM call
-                )
+                segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
                 updated_segments.append(segment)
         formatted_response["segments"] = updated_segments
         aspect_response_list.append(formatted_response)
@@ -602,7 +617,6 @@ def get_views_aspects(
         tentative_aspects,
         segment_ids,
         segment_2_transcript,
-        auth_token=os.getenv("RAG_SERVER_AUTH_TOKEN"),
         response_language=response_language,
     )
     views_dict = summarise_aspects(

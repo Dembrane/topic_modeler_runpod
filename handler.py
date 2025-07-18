@@ -11,12 +11,12 @@ def handler(event):
     logger.info("Handler started - processing new request")
 
     input = event["input"]
-    logger.info(f"Input received: {list(input.keys())}")
+    logger.info(f"Input received: {', '.join(list([f'{k}={v}' for k, v in input.items()]))}")
 
     segment_ids = [str(segment_id) for segment_id in input["segment_ids"]]
 
-    user_input = input.get("user_query", "")
-    user_input_description = input.get("user_query_description", "")
+    user_input = input["user_input"]
+    user_input_description = input["user_input_description"]
 
     user_prompt = user_input + "\n\n" + user_input_description
 
@@ -44,7 +44,6 @@ def handler(event):
                 user_prompt,
                 project_analysis_run_id,
                 response_language,
-                threshold_context_length=100000,
                 user_input=user_input,
                 user_input_description=user_input_description,
             )
@@ -78,7 +77,6 @@ def handler(event):
                 user_prompt,
                 project_analysis_run_id,
                 response_language,
-                threshold_context_length=100000,
                 user_input=user_input,
                 user_input_description=user_input_description,
             )
