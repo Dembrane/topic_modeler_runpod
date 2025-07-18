@@ -455,7 +455,6 @@ def update_directus(response, project_analysis_run_id) -> None:
             "name": title,
             "description": description,
             "summary": summary,
-            "seed": seed,
             "language": language,
             "processing_status": "Generating Aspects",
             "processing_started_at": str(datetime.now(timezone.utc)),
