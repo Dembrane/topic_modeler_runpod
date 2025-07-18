@@ -1,9 +1,10 @@
 {
     "input": {
       "response_language": "en",
-      "segment_ids": [1,2,3,4],
-      "user_prompt": "Please summarise all the topics.",
-      "project_analysis_run_id": "1b15b167-166c-4c0e-8fb9-c3bf5d930f3e"
+      "segment_ids": [1,2,3,4,5,6,7],
+      "user_input": "Please summarise all the topics.",
+      "user_input_description": "Please summarise all the topics.",
+      "project_analysis_run_id": "39742451-b083-4c3e-a214-4431cce3957b"
     }
   }
   

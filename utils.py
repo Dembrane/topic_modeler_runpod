@@ -1,3 +1,7 @@
+# [ ] TODO: Add retry logic in rag calls
+# [ ] TODO: Check why  user_input and user_input_description are not being populated in directus
+# [ ] TODO: Change backend of echo to respond only with data not prompt
+
 import os
 import json
 import uuid
@@ -45,7 +49,9 @@ DIRECTUS_BASE_URL = str(os.getenv("DIRECTUS_BASE_URL"))
 DIRECTUS_USERNAME = str(os.getenv("DIRECTUS_USERNAME"))
 DIRECTUS_PASSWORD = str(os.getenv("DIRECTUS_PASSWORD"))
 
-directus = DirectusClient(url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD)
+directus = DirectusClient(
+    url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD
+)
 
 
 def generate_uuid() -> str:

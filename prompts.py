@@ -268,8 +268,16 @@ You must organize your response using the following precise field structure:
 
 **references**: ARRAY
 For each data segment that supports your analysis, provide:
-- **segment_id**: int - The numerical identifier of the data segment (must be accurate)
+- **segment_id**: int - The numerical identifier of the data segment (must be accurate). Each segment_id looks like "SEGMENT_ID_<number>" in the input data - extract only the number portion (e.g., from "SEGMENT_ID_123" use 123)
 - **description**: string - Explain how this segment contributes to your overall analysis and its specific relevance to the topic
+
+## Critical Reference Guidelines
+- **ONLY include segment IDs that are explicitly mentioned in the input data with the format "SEGMENT_ID_<number>"**
+- **ONLY include segments that directly support claims, insights, or evidence in your analysis**
+- **DO NOT include a segment reference unless you can clearly explain its specific relevance to your findings**
+- **Extract the numeric ID correctly**: From "SEGMENT_ID_123" use 123, from "SEGMENT_ID_456" use 456
+- **Quality over quantity**: It's better to have fewer, highly relevant references than many irrelevant ones
+- **Verify relevance**: Each reference must correspond to content you actually analyzed and cited in your summary
 
 ## Quality Standards
 - **Depth**: Provide comprehensive analysis that goes beyond surface-level summarization
@@ -348,7 +356,7 @@ This query guided the generation of multiple detailed aspect reports. You now ne
 - Explain what the investigation covers and why it matters
 - Should orient readers to the scope and purpose of the multi-aspect analysis
 
-**summary**: string (4-6 paragraphs with markdown formatting)
+**summary**: string (2-3 paragraphs with markdown formatting)
 - Develop an in-depth, multi-section analysis with proper markdown formatting
 - Include clear subsections with descriptive headings
 - Present findings in logical progression from key insights to supporting details
@@ -451,8 +459,17 @@ Analyze the provided document summaries and generate a comprehensive, in-depth a
 - Address the broader implications and significance of the findings
 
 ### Segments
-- For each relevant document summary, provide accurate segment_id and description
-- Explain how each segment contributes to the overall analysis and its specific relevance
+For each data segment that supports your analysis, provide:
+- **segment_id**: int - The numerical identifier of the data segment (must be accurate). Each segment_id looks like "SEGMENT_ID_<number>" in the input data - extract only the number portion (e.g., from "SEGMENT_ID_123" use 123)
+- **description**: string - Explain how this segment contributes to your overall analysis and its specific relevance to the topic
+
+## Critical Segment Reference Guidelines
+- **ONLY include segment IDs that are explicitly mentioned in the document summaries with the format "SEGMENT_ID_<number>"**
+- **Extract the numeric ID correctly**: From "SEGMENT_ID_123" use 123, from "SEGMENT_ID_456" use 456
+- **ONLY include segments that directly support claims, insights, or evidence in your analysis**
+- **DO NOT include a segment reference unless you can clearly explain its specific relevance to your findings**
+- **Quality over quantity**: It's better to have fewer, highly relevant references than many irrelevant ones
+- **Verify relevance**: Each reference must correspond to content you actually analyzed and cited in your summary
 
 ## Quality Standards
 - **Depth**: Provide comprehensive analysis that goes beyond surface-level summarization
