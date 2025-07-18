@@ -41,6 +41,8 @@ from directus_sdk_py import DirectusClient
 from bertopic.vectorizers import ClassTfidfTransformer
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
+import tempfile
+import urllib.request
 
 load_dotenv()
 logger = RunPodLogger()
@@ -81,7 +83,39 @@ def get_image_url(aspect_title: str, aspect_summary: str) -> str:
         )
         image_url = response.data[0].url
         logger.info(f"Successfully generated image URL: {image_url}")
-        return image_url
+
+        # Download the image to a temporary location
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            urllib.request.urlretrieve(image_url, tmp_path)
+            logger.info(f"Downloaded image to temporary location: {tmp_path}")
+        
+        try:
+            # Upload the file to Directus
+            data = {
+                "title": f"Aspect Image - {aspect_title}",
+                "description": f"Generated image for aspect: {aspect_summary}",
+                "tags": ["aspect", "generated", "dalle"]
+            }
+            
+            # Upload the file
+            uploaded_file = directus.upload_file(tmp_path, data)
+            
+            # Construct the URL of the uploaded file
+            if isinstance(uploaded_file, dict) and 'id' in uploaded_file:
+                directus_image_url = f"{DIRECTUS_BASE_URL}/assets/{uploaded_file['id']}"
+                logger.info(f"Successfully uploaded image to Directus: {directus_image_url}")
+                return directus_image_url
+            else:
+                logger.error(f"Unexpected upload response format: {uploaded_file}")
+                return ""
+            
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                logger.info(f"Cleaned up temporary file: {tmp_path}")
+        
     except Exception as e:
         logger.error(f"Error generating image: {e}")
         return ""
