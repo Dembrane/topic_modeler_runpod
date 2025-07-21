@@ -1,4 +1,5 @@
 import os
+import asyncio
 
 import runpod
 from utils import get_views_aspects, get_views_aspects_fallback
@@ -7,7 +8,7 @@ from runpod import RunPodLogger
 logger = RunPodLogger()
 
 
-def handler(event):
+async def handler(event):
     logger.info("Handler started - processing new request")
 
     input = event["input"]
@@ -39,7 +40,7 @@ def handler(event):
     if RUN_FALLBACK_BY_DEFAULT:
         logger.info("Executing fallback path directly")
         try:
-            response = get_views_aspects_fallback(
+            response = await get_views_aspects_fallback(
                 segment_ids,
                 user_prompt,
                 project_analysis_run_id,
@@ -56,7 +57,7 @@ def handler(event):
     # Standard execution path
     logger.info("Attempting standard get_views_aspects execution")
     try:
-        response = get_views_aspects(
+        response = await get_views_aspects(
             segment_ids,
             user_prompt,
             project_analysis_run_id,
@@ -72,7 +73,7 @@ def handler(event):
         )
         try:
             logger.info("Attempting fallback execution after standard method failed")
-            response = get_views_aspects_fallback(
+            response = await get_views_aspects_fallback(
                 segment_ids,
                 user_prompt,
                 project_analysis_run_id,

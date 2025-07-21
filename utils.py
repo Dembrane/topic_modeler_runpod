@@ -8,11 +8,15 @@ import json
 import time
 import uuid
 import random
+import asyncio
+import tempfile
+import urllib.request
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
 import torch
 import pandas as pd
+import aiohttp
 import requests
 from umap import UMAP
 from dotenv import load_dotenv
@@ -41,8 +45,6 @@ from directus_sdk_py import DirectusClient
 from bertopic.vectorizers import ClassTfidfTransformer
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
-import tempfile
-import urllib.request
 
 load_dotenv()
 logger = RunPodLogger()
@@ -85,37 +87,42 @@ def get_image_url(aspect_title: str, aspect_summary: str) -> str:
         logger.info(f"Successfully generated image URL: {image_url}")
 
         # Download the image to a temporary location
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
             tmp_path = tmp_file.name
             urllib.request.urlretrieve(image_url, tmp_path)
             logger.info(f"Downloaded image to temporary location: {tmp_path}")
-        
+
         try:
             # Upload the file to Directus
             data = {
                 "title": f"Aspect Image - {aspect_title}",
                 "description": f"Generated image for aspect: {aspect_summary}",
-                "tags": ["aspect", "generated", "dalle"]
+                "tags": ["aspect", "generated", "dalle"],
             }
-            
+
             # Upload the file
             uploaded_file = directus.upload_file(tmp_path, data)
-            
+
             # Construct the URL of the uploaded file
-            if isinstance(uploaded_file, dict) and 'id' in uploaded_file:
+            if isinstance(uploaded_file, dict) and "id" in uploaded_file:
                 directus_image_url = f"{DIRECTUS_BASE_URL}/assets/{uploaded_file['id']}"
                 logger.info(f"Successfully uploaded image to Directus: {directus_image_url}")
                 return directus_image_url
             else:
                 logger.error(f"Unexpected upload response format: {uploaded_file}")
+                logger.info("Could not upload image to Directus")
                 return ""
-            
+
+        except Exception as directus_error:
+            logger.error(f"Directus upload failed: {directus_error}")
+            logger.info("Could not upload image to Directus")
+            return ""
         finally:
             # Clean up the temporary file
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
                 logger.info(f"Cleaned up temporary file: {tmp_path}")
-        
+
     except Exception as e:
         logger.error(f"Error generating image: {e}")
         return ""
@@ -326,7 +333,148 @@ def get_rag_prompt(
         raise Exception(f"Failed to get RAG prompt from server: {str(e)}") from e
 
 
-def get_aspect_response_list(
+async def get_rag_prompt_async(
+    query: str, segment_ids: Optional[List[str]] = None, rag_server_url: Optional[str] = None
+) -> str:
+    """
+    Async version of get_rag_prompt for parallel processing.
+    """
+    if rag_server_url is None:
+        rag_server_url = os.getenv("RAG_SERVER_URL")
+        if not rag_server_url:
+            raise ValueError(
+                "RAG_SERVER_URL environment variable not set and no rag_server_url provided"
+            )
+
+    url = f"{rag_server_url.rstrip('/')}/api/stateless/rag/get_lightrag_prompt"
+
+    payload = {
+        "query": query,
+        "conversation_history": None,
+        "echo_segment_ids": segment_ids,
+        "echo_conversation_ids": None,
+        "echo_project_ids": None,
+        "auto_select_bool": False,
+        "get_transcripts": False,
+        "top_k": 60,
+    }
+
+    headers = {"Content-Type": "application/json"}
+    headers["Authorization"] = f"Bearer {get_directus_token()}"
+
+    try:
+        logger.info(f"Making async RAG API request to {url}")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+            ) as response:
+                response.raise_for_status()
+                result = await response.text()
+                logger.info("Successfully retrieved RAG prompt")
+                return result
+
+    except Exception as e:
+        logger.error(f"Error calling API: {e}")
+        raise Exception(f"Failed to get RAG prompt from server: {str(e)}") from e
+
+
+async def run_formated_llm_call_async(
+    messages: List[Dict[str, str]], response_format: type[BaseModel]
+):
+    """
+    Async version of run_formated_llm_call for parallel processing.
+    """
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: completion(
+            messages=messages,
+            model=str(os.getenv("AZURE_MODEL")),
+            api_key=os.getenv("AZURE_API_KEY"),
+            api_base=os.getenv("AZURE_API_BASE"),
+            api_version=os.getenv("AZURE_API_VERSION"),
+            response_format=response_format,
+        ),
+    )
+    return json.loads(response.choices[0].message.content)
+
+
+async def get_image_url_async(aspect_title: str, aspect_summary: str) -> str:
+    """
+    Async version of get_image_url for parallel processing with timeout.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        # Add a timeout to prevent hanging on Directus upload issues
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, get_image_url, aspect_title, aspect_summary),
+            timeout=60.0,  # 60 second timeout
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"Image generation timed out for aspect: {aspect_title}")
+        return ""
+    except Exception as e:
+        logger.error(f"Error in async image generation for aspect '{aspect_title}': {e}")
+        return ""
+
+
+async def process_single_aspect(
+    tentative_aspect_topic: str,
+    segment_ids: List[str],
+    segment_2_transcript: Dict[int, str],
+    response_language: str = "en",
+) -> Dict:
+    """
+    Process a single aspect asynchronously.
+    """
+    # Format the initial RAG prompt
+    formated_initial_rag_prompt = initial_rag_prompt.format(
+        tentative_aspect_topic=tentative_aspect_topic
+    )
+
+    # Get RAG prompt asynchronously
+    rag_prompt = await get_rag_prompt_async(
+        formated_initial_rag_prompt, segment_ids=[str(segment_id) for segment_id in segment_ids]
+    )
+
+    # Prepare RAG messages
+    rag_messages = [
+        {"role": "system", "content": rag_system_prompt},
+        {
+            "role": "user",
+            "content": rag_user_prompt.format(
+                response_language=response_language,
+                input_report=rag_prompt,
+                tentative_aspect_topic=tentative_aspect_topic,
+            ),
+        },
+    ]
+
+    # LLM call (litellm handles retries internally)
+    formatted_response = await run_formated_llm_call_async(rag_messages, Aspect)
+
+    # Get image URL asynchronously
+    formatted_response["image_url"] = await get_image_url_async(
+        formatted_response["title"], formatted_response["description"]
+    )
+
+    # Update segments (same logic)
+    updated_segments = []
+    for segment in formatted_response["segments"]:
+        id = segment["segment_id"]
+        if id in segment_2_transcript.keys():
+            segment.pop("segment_id")
+            segment["id"] = id
+            segment["conversation_id"] = ""
+            segment["verbatim_transcript"] = segment_2_transcript[id]
+            segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
+            updated_segments.append(segment)
+    formatted_response["segments"] = updated_segments
+
+    return formatted_response
+
+
+async def get_aspect_response_list(
     aspects: List[str],
     segment_ids: List[str],
     segment_2_transcript: Dict[int, str],
@@ -334,6 +482,7 @@ def get_aspect_response_list(
 ):
     """
     Generate detailed responses for each aspect using RAG and LLM processing.
+    Now processes aspects in parallel using async/await.
 
     Args:
         aspects: List of aspect topics to analyze
@@ -349,54 +498,21 @@ def get_aspect_response_list(
             - segments: List of relevant segments with transcripts
             - image_url: URL for any associated image
     """
-    aspect_response_list = []
-    for tentative_aspect_topic in aspects:
-        # TODO:Move this to the get_aspect_response function
-        formated_initial_rag_prompt = initial_rag_prompt.format(
-            tentative_aspect_topic=tentative_aspect_topic
+    # Create tasks for all aspects to process them in parallel
+    tasks = [
+        process_single_aspect(
+            tentative_aspect_topic, segment_ids, segment_2_transcript, response_language
         )
-        rag_prompt = get_rag_prompt(
-            formated_initial_rag_prompt, segment_ids=[str(segment_id) for segment_id in segment_ids]
-        )
-        rag_messages = [
-            {"role": "system", "content": rag_system_prompt},
-            {
-                "role": "user",
-                "content": rag_user_prompt.format(
-                    response_language=response_language,
-                    input_report=rag_prompt,
-                    tentative_aspect_topic=tentative_aspect_topic,
-                ),
-            },
-        ]
-        # Retry logic for LLM call
-        formatted_response = retry_with_backoff(
-            lambda: run_formated_llm_call(rag_messages, Aspect),
-            max_retries=3,
-            initial_delay=2,
-            backoff_factor=2,
-            jitter=1.0,
-            logger=logger,
-        )
-        formatted_response["image_url"] = get_image_url(
-            formatted_response["title"], formatted_response["description"]
-        )
-        updated_segments = []
-        for segment in formatted_response["segments"]:
-            id = segment["segment_id"]
-            if id in segment_2_transcript.keys():
-                segment.pop("segment_id")
-                segment["id"] = id
-                segment["conversation_id"] = ""
-                segment["verbatim_transcript"] = segment_2_transcript[id]
-                segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
-                updated_segments.append(segment)
-        formatted_response["segments"] = updated_segments
-        aspect_response_list.append(formatted_response)
+        for tentative_aspect_topic in aspects
+    ]
+
+    # Wait for all tasks to complete and collect results
+    aspect_response_list = await asyncio.gather(*tasks)
+
     return aspect_response_list
 
 
-def fallback_get_aspect_response_list(
+async def fallback_get_aspect_response_list(
     aspects: List[str],
     document_summaries: str,
     user_prompt: str,
@@ -418,7 +534,7 @@ def fallback_get_aspect_response_list(
             },
         ]
         formatted_response = run_formated_llm_call(messages, Aspect)
-        formatted_response["image_url"] = get_image_url(
+        formatted_response["image_url"] = await get_image_url_async(
             formatted_response["title"], formatted_response["description"]
         )
         updated_segments = []
@@ -552,7 +668,7 @@ def summarise_aspects(
     return view_response
 
 
-def get_views_aspects(
+async def get_views_aspects(
     segment_ids: List[str],
     user_prompt: str,
     project_analysis_run_id: str,
@@ -685,7 +801,7 @@ def get_views_aspects(
         tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
 
     tentative_aspects = tentative_aspects_response["topics"]
-    aspect_response_list = get_aspect_response_list(
+    aspect_response_list = await get_aspect_response_list(
         tentative_aspects,
         segment_ids,
         segment_2_transcript,
@@ -706,7 +822,7 @@ def get_views_aspects(
     return response
 
 
-def get_views_aspects_fallback(
+async def get_views_aspects_fallback(
     segment_ids: List[str],
     user_prompt: str,
     project_analysis_run_id: str,
@@ -762,7 +878,7 @@ def get_views_aspects_fallback(
     ]
     tentative_aspects_response = run_formated_llm_call(messages, TopicModelResponse)
     tentative_aspects = tentative_aspects_response["topics"]
-    aspect_response_list = fallback_get_aspect_response_list(
+    aspect_response_list = await fallback_get_aspect_response_list(
         tentative_aspects,
         docs_with_ids,
         user_prompt,
