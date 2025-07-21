@@ -197,3 +197,6 @@ For issues and questions:
 - Check the troubleshooting section
 - Review the configuration requirements
 - Ensure all environment variables are properly set
+
+## New Version
+git tag -a v1.X.X -m "XYZ"
