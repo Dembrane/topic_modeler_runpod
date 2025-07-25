@@ -718,8 +718,9 @@ async def get_views_aspects(
         "conversation_segment",
         {
             "query": {
-                "filter": {"id": {"_in": segment_ids}},
+                "filter": {"id": {"_in": segment_ids}, "transcript": {"_nnull": True}},
                 "fields": ["id", "contextual_transcript", "transcript"],
+                "limit": -1,
             },
         },
     )
