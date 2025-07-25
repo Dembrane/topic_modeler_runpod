@@ -379,20 +379,31 @@ async def get_rag_prompt_async(
 
 
 async def run_formated_llm_call_async(
-    messages: List[Dict[str, str]], response_format: type[BaseModel]
+    messages: List[Dict[str, str]], response_format: type[BaseModel], model_type: str = "small"
 ):
     """
     Async version of run_formated_llm_call for parallel processing.
     """
+    if model_type == "small":
+        model = str(os.getenv("AZURE_MODEL"))
+        api_key = os.getenv("AZURE_API_KEY")
+        api_base = os.getenv("AZURE_API_BASE")
+        api_version = os.getenv("AZURE_API_VERSION")
+    elif model_type == "large":
+        model = str(os.getenv("AZURE_MODEL_LARGE"))
+        api_key = os.getenv("AZURE_API_KEY")
+        api_base = os.getenv("AZURE_API_BASE")
+        api_version = os.getenv("AZURE_API_VERSION")
+
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
         lambda: completion(
             messages=messages,
-            model=str(os.getenv("AZURE_MODEL")),
-            api_key=os.getenv("AZURE_API_KEY"),
-            api_base=os.getenv("AZURE_API_BASE"),
-            api_version=os.getenv("AZURE_API_VERSION"),
+            model=model,
+            api_key=api_key,
+            api_base=api_base,
+            api_version=api_version,
             response_format=response_format,
         ),
     )
@@ -451,7 +462,7 @@ async def process_single_aspect(
     ]
 
     # LLM call (litellm handles retries internally)
-    formatted_response = await run_formated_llm_call_async(rag_messages, Aspect)
+    formatted_response = await run_formated_llm_call_async(rag_messages, Aspect, model_type="large")
 
     # Get image URL asynchronously
     formatted_response["image_url"] = await get_image_url_async(
@@ -463,12 +474,13 @@ async def process_single_aspect(
     for segment in formatted_response["segments"]:
         id = segment["segment_id"]
         if id in segment_2_transcript.keys():
-            segment.pop("segment_id")
-            segment["id"] = id
-            segment["conversation_id"] = ""
-            segment["verbatim_transcript"] = segment_2_transcript[id]
-            segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
-            updated_segments.append(segment)
+            if segment_2_transcript[id] is not None or segment_2_transcript[id] != "":
+                segment.pop("segment_id")
+                segment["id"] = id
+                segment["conversation_id"] = ""
+                segment["verbatim_transcript"] = segment_2_transcript[id]
+                segment["relevant_segments"] = f"0:{len(segment['verbatim_transcript']) - 1}"
+                updated_segments.append(segment)
     formatted_response["segments"] = updated_segments
 
     return formatted_response
