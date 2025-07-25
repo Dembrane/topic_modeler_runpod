@@ -510,16 +510,25 @@ async def get_aspect_response_list(
             - segments: List of relevant segments with transcripts
             - image_url: URL for any associated image
     """
-    # Create tasks for all aspects to process them in parallel
-    tasks = [
-        process_single_aspect(
-            tentative_aspect_topic, segment_ids, segment_2_transcript, response_language
-        )
-        for tentative_aspect_topic in aspects
-    ]
+    # # Create tasks for all aspects to process them in parallel
+    # tasks = [
+    #     process_single_aspect(
+    #         tentative_aspect_topic, segment_ids, segment_2_transcript, response_language
+    #     )
+    #     for tentative_aspect_topic in aspects
+    # ]
 
-    # Wait for all tasks to complete and collect results
-    aspect_response_list = await asyncio.gather(*tasks)
+    # # Wait for all tasks to complete and collect results
+    # aspect_response_list = await asyncio.gather(*tasks)
+    
+    aspect_response_list = []
+
+    for tentative_aspect_topic in aspects:
+        aspect_response_list.append(
+            await process_single_aspect(
+                tentative_aspect_topic, segment_ids, segment_2_transcript, response_language
+            )
+        )
 
     return aspect_response_list
 
