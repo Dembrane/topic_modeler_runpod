@@ -53,9 +53,14 @@ DIRECTUS_BASE_URL = str(os.getenv("DIRECTUS_BASE_URL"))
 DIRECTUS_USERNAME = str(os.getenv("DIRECTUS_USERNAME"))
 DIRECTUS_PASSWORD = str(os.getenv("DIRECTUS_PASSWORD"))
 
-directus = DirectusClient(
-    url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD
-)
+
+def get_directus_client() -> DirectusClient:
+    directus_client = DirectusClient(
+        url=DIRECTUS_BASE_URL, email=DIRECTUS_USERNAME, password=DIRECTUS_PASSWORD
+    )
+    directus_client.login()
+    return directus_client
+
 
 client = OpenAI(base_url=os.getenv("OPENAI_API_BASE_URL"), api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -101,7 +106,7 @@ def get_image_url(aspect_title: str, aspect_summary: str) -> str:
             }
 
             # Upload the file
-            uploaded_file = directus.upload_file(tmp_path, data)
+            uploaded_file = get_directus_client().upload_file(tmp_path, data)
 
             # Construct the URL of the uploaded file
             if isinstance(uploaded_file, dict) and "id" in uploaded_file:
@@ -520,7 +525,7 @@ async def get_aspect_response_list(
 
     # # Wait for all tasks to complete and collect results
     # aspect_response_list = await asyncio.gather(*tasks)
-    
+
     aspect_response_list = []
 
     for tentative_aspect_topic in aspects:
@@ -585,7 +590,7 @@ def update_directus(response, project_analysis_run_id) -> None:
     user_input = view.get("user_input", "")
     user_input_description = view.get("user_input_description", "")
     view_id = generate_uuid()
-    directus.create_item(
+    get_directus_client().create_item(
         "view",
         item_data={
             "id": str(view_id),
@@ -607,7 +612,7 @@ def update_directus(response, project_analysis_run_id) -> None:
         aspect_summary = aspect.get("summary", "")
         segments = aspect.get("segments", [])
         image_url = aspect.get("image_url", "")
-        directus.create_item(
+        get_directus_client().create_item(
             "aspect",
             {
                 "id": str(aspect_id),
@@ -626,7 +631,7 @@ def update_directus(response, project_analysis_run_id) -> None:
             conversation_id = segment.get("conversation_id", "")
             verbatim_transcript = segment.get("verbatim_transcript", "")
             relevant_index = segment.get("relevant_segments", "")
-            directus.create_item(
+            get_directus_client().create_item(
                 "aspect_segment",
                 {
                     "id": str(aspect_segment_id),
@@ -638,7 +643,7 @@ def update_directus(response, project_analysis_run_id) -> None:
                     "relevant_index": relevant_index,
                 },
             )
-    directus.create_item(
+    get_directus_client().create_item(
         "processing_status",
         {
             "project_analysis_run_id": str(project_analysis_run_id),
@@ -723,7 +728,7 @@ async def get_views_aspects(
     if response_language is None:
         response_language = "en"
 
-    segments = directus.get_items(
+    segments = get_directus_client().get_items(
         "conversation_segment",
         {
             "query": {
@@ -855,7 +860,7 @@ async def get_views_aspects_fallback(
 ) -> Dict:
     import random
 
-    summaries = directus.get_items(
+    summaries = get_directus_client().get_items(
         "conversation_segment",
         {
             "query": {
