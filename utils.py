@@ -81,14 +81,29 @@ def get_image_url(aspect_title: str, aspect_summary: str) -> str:
     Summary of ideas: "{aspect_summary}"
     """
     try:
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=PROMPT,
-            size="1024x1024",
-            quality="standard",
-            n=1,
+        # Make direct API call to Azure DALL-E 3
+        azure_endpoint = os.getenv("AZURE_DALE3_URL").rstrip("/")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.getenv('AZURE_API_KEY')}",
+        }
+        payload = {
+            "model": "dall-e-3",
+            "prompt": PROMPT,
+            "size": "1024x1024",
+            "quality": "standard",
+            "n": 1,
+            "style": "vivid",  # Adding style parameter for better results
+        }
+
+        response = requests.post(
+            azure_endpoint,
+            headers=headers,
+            json=payload,
         )
-        image_url = response.data[0].url
+        response.raise_for_status()
+        response_data = response.json()
+        image_url = response_data["data"][0]["url"]
         logger.info(f"Successfully generated image URL: {image_url}")
 
         # Download the image to a temporary location
