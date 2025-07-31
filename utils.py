@@ -485,9 +485,15 @@ async def process_single_aspect(
     formatted_response = await run_formated_llm_call_async(rag_messages, Aspect, model_type="large")
 
     # Get image URL asynchronously
-    formatted_response["image_url"] = await get_image_url_async(
-        formatted_response["title"], formatted_response["description"]
-    )
+    try:
+        formatted_response["image_url"] = await get_image_url_async(
+            formatted_response["title"], formatted_response["description"]
+        )
+    except Exception as e:
+        logger.error(
+            f"Error in async image generation for aspect '{formatted_response['title']}': {e}"
+        )
+        formatted_response["image_url"] = ""
 
     # Update segments (same logic)
     updated_segments = []
