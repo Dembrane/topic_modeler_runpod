@@ -3,3 +3,4 @@ litellm==1.73.*
 directus-sdk-py==1.1.*
 runpod==1.7.*
 aiohttp==3.10.*
+tqdm==4.67.1

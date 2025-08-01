@@ -35,7 +35,11 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy all application files
+# Copy all application files including package directories
+COPY core/ ./core/
+COPY services/ ./services/
+COPY integrations/ ./integrations/
+COPY utils/ ./utils/
 COPY *.py ./
 COPY *.json ./
 

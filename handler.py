@@ -1,5 +1,4 @@
 import os
-import asyncio
 
 import runpod
 from utils import get_views_aspects, get_views_aspects_fallback
@@ -30,6 +29,8 @@ async def handler(event):
     logger.info(f"Response language: {response_language}")
     logger.info(f"User prompt: {user_prompt[:100]}...")  # Log first 100 chars of prompt
 
+    ENABLE_FALLBACK = os.getenv("ENABLE_FALLBACK", "false").lower() == "true"
+    logger.info(f"ENABLE_FALLBACK: {ENABLE_FALLBACK}")
     if input.get("run_fallback", False) or os.getenv("RUN_FALLBACK", "false").lower() == "true":
         RUN_FALLBACK_BY_DEFAULT = True
         logger.info("Fallback mode enabled - using get_views_aspects_fallback directly")
@@ -68,25 +69,27 @@ async def handler(event):
         logger.info("Standard execution completed successfully")
         return response
     except Exception as e:
-        logger.info(
-            f"Error in default get_views_aspects: {e}; falling back to get_views_aspects_fallback"
-        )
-        try:
-            logger.info("Attempting fallback execution after standard method failed")
-            response = await get_views_aspects_fallback(
-                segment_ids,
-                user_prompt,
-                project_analysis_run_id,
-                response_language,
-                user_input=user_input,
-                user_input_description=user_input_description,
-            )
-            logger.info("Fallback execution completed successfully after standard method failure")
-            return response
-        except Exception as e:
-            logger.error(f"Error in get_views_aspects_fallback: {e}")
-            logger.error("Both standard and fallback methods failed - raising exception")
-            raise e
+        logger.info(f"Error in default get_views_aspects: {e}")
+        if ENABLE_FALLBACK:
+            logger.info("Falling back to get_views_aspects_fallback")
+            try:
+                logger.info("Attempting fallback execution after standard method failed")
+                response = await get_views_aspects_fallback(
+                    segment_ids,
+                    user_prompt,
+                    project_analysis_run_id,
+                    response_language,
+                    user_input=user_input,
+                    user_input_description=user_input_description,
+                )
+                logger.info(
+                    "Fallback execution completed successfully after standard method failure"
+                )
+                return response
+            except Exception as e:
+                logger.error(f"Error in get_views_aspects_fallback: {e}")
+                logger.error("Both standard and fallback methods failed - raising exception")
+                raise e
 
 
 runpod.serverless.start({"handler": handler})
