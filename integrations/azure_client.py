@@ -2,9 +2,10 @@ import os
 import json
 import asyncio
 from typing import Dict, List
-from pydantic import BaseModel
-from litellm import completion
+
 from runpod import RunPodLogger
+from litellm import completion
+from pydantic import BaseModel
 
 logger = RunPodLogger()
 
