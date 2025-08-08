@@ -1,7 +1,6 @@
 from typing import Dict, List
-from tqdm.asyncio import tqdm
+
 from runpod import RunPodLogger
-from data_model import Aspect
 from prompts import (
     rag_user_prompt,
     rag_system_prompt,
@@ -9,8 +8,11 @@ from prompts import (
     fallback_get_aspect_response_list_user_prompt,
     fallback_get_aspect_response_list_system_prompt,
 )
+from data_model import Aspect
+from tqdm.asyncio import tqdm
 from integrations.rag_client import get_rag_prompt_async
 from integrations.azure_client import run_formated_llm_call_async
+
 from services.image_generator import get_image_url_async
 
 logger = RunPodLogger()

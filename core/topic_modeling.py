@@ -1,14 +1,14 @@
 import os
 from typing import List, Optional
+
 import torch
-import pandas as pd
 from umap import UMAP
+from runpod import RunPodLogger
 from hdbscan import HDBSCAN
 from bertopic import BERTopic
 from bertopic.vectorizers import ClassTfidfTransformer
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
-from runpod import RunPodLogger
 
 logger = RunPodLogger()
 

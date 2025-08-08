@@ -1,10 +1,9 @@
 import os
 import random
 from typing import Dict, List
+
 import pandas as pd
 from runpod import RunPodLogger
-from litellm.utils import token_counter
-from data_model import TopicModelResponse, ViewSummaryResponse
 from prompts import (
     topic_model_user_prompt,
     view_summary_user_prompt,
@@ -13,9 +12,12 @@ from prompts import (
     vanilla_topic_model_user_prompt,
     vanilla_topic_model_system_prompt,
 )
+from data_model import TopicModelResponse, ViewSummaryResponse
+from litellm.utils import token_counter
 from core.topic_modeling import initialize_topic_model, run_topic_model_hierarchical
-from integrations.directus_client import get_directus_client, update_directus
 from integrations.azure_client import run_formated_llm_call_async
+from integrations.directus_client import update_directus, get_directus_client
+
 from services.aspect_processor import get_aspect_response_list, fallback_get_aspect_response_list
 
 logger = RunPodLogger()
