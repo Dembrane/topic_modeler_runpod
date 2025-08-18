@@ -37,6 +37,13 @@ async def process_single_aspect(
         formated_initial_rag_prompt, segment_ids=[str(segment_id) for segment_id in segment_ids]
     )
 
+    if len(rag_prompt) < 100:
+        # Returns if nothing is found: Sorry, I'm not able to provide an answer to that question.[no-context]
+        logger.error(f"RAG prompt is too short for aspect '{tentative_aspect_topic}'")
+        raise ValueError(
+            f"RAG prompt is too short for aspect '{tentative_aspect_topic}'. \nRAG prompt: {rag_prompt}"
+        )
+
     # Prepare RAG messages
     rag_messages = [
         {"role": "system", "content": rag_system_prompt},
