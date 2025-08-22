@@ -22,6 +22,7 @@ Transform document collections into a curated set of high-quality, unique, and r
 6. **Professional Standards**: Maintain objectivity and factual accuracy in all topic identification
 7. **Coherence Control**: Apply rigorous quality control to prevent incoherent or fragmented topics
 8. **Actionable Insights**: Ensure all identified topics provide clear pathways for further investigation
+9. **Ranking**: Rank the topic while returning. Retun the most important topic first, and the least important topic last.  
 """
 
 vanilla_topic_model_user_prompt = """
@@ -99,6 +100,7 @@ Your final topic list must demonstrate:
 - Professional quality suitable for journalistic investigation
 - Actionable value that enables further research and analysis
 - Comprehensive quality that justifies inclusion in the final set
+- **Ranking**: Rank the topic while returning. Retun the most important topic first, and the least important topic last.  
 """
 
 topic_model_system_prompt = """
@@ -122,6 +124,7 @@ Transform representative document collections into a curated set of high-quality
 4. **Content Integration**: Synthesize information across multiple documents to identify coherent themes
 5. **Professional Standards**: Maintain objectivity and factual accuracy in all topic identification
 6. **Actionable Insights**: Ensure all identified topics provide clear pathways for further investigation
+7. **Ranking**: Rank the topic while returning. Retun the most important topic first, and the least important topic last.  
 """
 
 topic_model_user_prompt = """
@@ -176,6 +179,7 @@ Before finalizing your topic extraction, verify that each topic:
 - Maintains professional standards of clarity and specificity
 - Offers actionable direction for further exploration
 - Contributes meaningfully to understanding the query domain
+- **Ranking**: Rank the topic while returning. Retun the most important topic first, and the least important topic last.  
 """
 
 

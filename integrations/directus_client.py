@@ -59,7 +59,7 @@ def update_directus(response, project_analysis_run_id) -> None:
             "user_input_description": user_input_description,
         },
     )
-    for aspect in aspects:
+    for rank, aspect in enumerate(aspects):
         aspect_id = generate_uuid()
         aspect_title = aspect.get("title", "")
         aspect_description = aspect.get("description", "")
@@ -76,6 +76,7 @@ def update_directus(response, project_analysis_run_id) -> None:
                 "long_summary": aspect_summary,
                 "image_url": image_url,
                 "view_id": str(view_id),
+                "rank": rank,
             },
         )
         for segment in segments:
